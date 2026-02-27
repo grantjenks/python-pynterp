@@ -225,17 +225,131 @@ class StatementMixin:
         eval_scope = _TypeAliasEvalScope(scope, eval_bindings)
 
         if isinstance(node, ast.TypeVar):
+            def build_lazy_typevar(
+                *,
+                bound_evaluator: Any = _MISSING,
+                constraint_evaluators: tuple[Any, ...] = (),
+                default_evaluator: Any = _MISSING,
+            ) -> Any:
+                params: list[str] = []
+                args: list[Any] = []
+
+                annotation = ""
+                if bound_evaluator is not _MISSING:
+                    params.append("__pynterp_eval_bound")
+                    args.append(bound_evaluator)
+                    annotation = ": __pynterp_eval_bound()"
+                elif constraint_evaluators:
+                    callback_names = []
+                    for index, evaluator in enumerate(constraint_evaluators):
+                        callback_name = f"__pynterp_eval_constraint_{index}"
+                        params.append(callback_name)
+                        args.append(evaluator)
+                        callback_names.append(f"{callback_name}()")
+                    tuple_expr = ", ".join(callback_names)
+                    if len(callback_names) == 1:
+                        tuple_expr += ","
+                    annotation = f": ({tuple_expr})"
+
+                default_expr = ""
+                if default_evaluator is not _MISSING:
+                    params.append("__pynterp_eval_default")
+                    args.append(default_evaluator)
+                    default_expr = " = __pynterp_eval_default()"
+
+                param_list = ", ".join(params)
+                module_name = scope.globals.get("__name__", "__main__")
+                helper_globals: Dict[str, Any] = {
+                    "__builtins__": scope.builtins,
+                    "__name__": module_name if isinstance(module_name, str) else "__main__",
+                }
+                source = (
+                    f"def __pynterp_make_typevar({param_list}):\n"
+                    f"    def __pynterp_tmp[{node.name}{annotation}{default_expr}]():\n"
+                    "        pass\n"
+                    "    return __pynterp_tmp.__type_params__[0]\n"
+                )
+                exec(source, helper_globals)
+                return helper_globals["__pynterp_make_typevar"](*args)
+
             kwargs: Dict[str, Any] = {}
             if node.default_value is not None:
-                kwargs["default"] = self._eval_type_param_default(node.default_value, eval_scope)
+                default_node = node.default_value
+                default_evaluator = lambda: self._eval_type_param_default(default_node, eval_scope)
+            else:
+                default_evaluator = _MISSING
             if node.bound is None:
+                if default_evaluator is _MISSING:
+                    return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
+                kwargs["default"] = default_evaluator()
                 return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
             if isinstance(node.bound, ast.Tuple):
-                constraints = tuple(self.eval_expr(elt, eval_scope) for elt in node.bound.elts)
+                try:
+                    constraints = tuple(self.eval_expr(elt, eval_scope) for elt in node.bound.elts)
+                except NameError:
+                    lazy_bindings = dict(eval_bindings)
+                    lazy_default_evaluator = (
+                        (
+                            lambda: self._eval_type_param_default(
+                                default_node,
+                                _TypeAliasEvalScope(scope, lazy_bindings),
+                            )
+                        )
+                        if node.default_value is not None
+                        else _MISSING
+                    )
+                    lazy_typevar = build_lazy_typevar(
+                        constraint_evaluators=tuple(
+                            (
+                                lambda elt=elt: self.eval_expr(
+                                    elt,
+                                    _TypeAliasEvalScope(scope, lazy_bindings),
+                                )
+                            )
+                            for elt in node.bound.elts
+                        ),
+                        default_evaluator=lazy_default_evaluator,
+                    )
+                    for binding_name in self._type_param_binding_names(
+                        node.name,
+                        private_owner=private_owner,
+                    ):
+                        lazy_bindings[binding_name] = lazy_typevar
+                    return lazy_typevar
+                if default_evaluator is not _MISSING:
+                    kwargs["default"] = default_evaluator()
                 return self._typing_runtime_call(
                     scope, py_typing.TypeVar, node.name, *constraints, **kwargs
                 )
-            kwargs["bound"] = self.eval_expr(node.bound, eval_scope)
+            try:
+                kwargs["bound"] = self.eval_expr(node.bound, eval_scope)
+            except NameError:
+                lazy_bindings = dict(eval_bindings)
+                lazy_default_evaluator = (
+                    (
+                        lambda: self._eval_type_param_default(
+                            default_node,
+                            _TypeAliasEvalScope(scope, lazy_bindings),
+                        )
+                    )
+                    if node.default_value is not None
+                    else _MISSING
+                )
+                lazy_typevar = build_lazy_typevar(
+                    bound_evaluator=lambda: self.eval_expr(
+                        node.bound,
+                        _TypeAliasEvalScope(scope, lazy_bindings),
+                    ),
+                    default_evaluator=lazy_default_evaluator,
+                )
+                for binding_name in self._type_param_binding_names(
+                    node.name,
+                    private_owner=private_owner,
+                ):
+                    lazy_bindings[binding_name] = lazy_typevar
+                return lazy_typevar
+            if default_evaluator is not _MISSING:
+                kwargs["default"] = default_evaluator()
             return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
 
         if isinstance(node, ast.ParamSpec):

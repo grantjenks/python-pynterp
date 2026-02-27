@@ -594,6 +594,61 @@ RESULT = Outer.Inner.marker is Outer.__type_params__[0]
     assert env["RESULT"] is True
 
 
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_class_typevar_bounds_are_lazily_evaluated(run_interpreter):
+    source = """
+def build():
+    class Foo[T: Foo, U: (Foo, Foo)]:
+        pass
+
+    T, U = Foo.__type_params__
+    return (
+        T.__bound__ is Foo,
+        U.__constraints__ == (Foo, Foo),
+    )
+
+RESULT = build()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True)
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_class_typevar_lazy_name_errors_can_resolve_later(run_interpreter):
+    source = """
+def build():
+    class Foo[T: Undefined, U: (Undefined,)]:
+        pass
+
+    T, U = Foo.__type_params__
+    try:
+        T.__bound__
+    except NameError:
+        bound_before = "NameError"
+    else:
+        bound_before = "ok"
+
+    try:
+        U.__constraints__
+    except NameError:
+        constraints_before = "NameError"
+    else:
+        constraints_before = "ok"
+
+    Undefined = "defined"
+    return (
+        bound_before,
+        constraints_before,
+        T.__bound__,
+        U.__constraints__,
+    )
+
+RESULT = build()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("NameError", "NameError", "defined", ("defined",))
+
+
 def test_async_function_def_returns_coroutine(run_interpreter):
     source = """
 async def add(x, y=3):
