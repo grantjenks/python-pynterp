@@ -123,6 +123,13 @@ class StatementMixin:
 
         raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")
 
+    def _normalize_class_namespace(self, class_ns: Dict[str, Any]) -> None:
+        # CPython implicitly wraps these hooks as classmethod when they are plain functions.
+        for name in ("__init_subclass__", "__class_getitem__"):
+            value = class_ns.get(name, _MISSING)
+            if isinstance(value, UserFunction):
+                class_ns[name] = py_builtins.classmethod(value)
+
     def exec_TypeAlias(self, node: ast.TypeAlias, scope: RuntimeScope) -> None:
         if not isinstance(node.name, ast.Name):
             raise NotImplementedError(
@@ -665,6 +672,7 @@ class StatementMixin:
             class_cell=class_cell,
         )
         self.exec_block(node.body, body_scope)
+        self._normalize_class_namespace(class_ns)
 
         cls = meta(node.name, bases, class_ns, **kw)
         class_cell.value = cls
@@ -1138,6 +1146,7 @@ class StatementMixin:
         )
         # class body itself cannot yield (syntax), so normal exec is OK:
         self.exec_block(node.body, body_scope)
+        self._normalize_class_namespace(class_ns)
 
         cls = meta(node.name, bases, class_ns, **kw)
         class_cell.value = cls

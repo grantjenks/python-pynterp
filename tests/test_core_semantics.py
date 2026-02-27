@@ -227,6 +227,35 @@ RESULT = Outer().make()
     assert env["RESULT"] == "Outer.make.<locals>.Local"
 
 
+def test_init_subclass_defined_in_interpreted_class_is_implicitly_classmethod(run_interpreter):
+    source = """
+class Base:
+    seen = None
+    def __init_subclass__(cls):
+        Base.seen = cls.__name__
+        cls.marker = "ok"
+
+class Child(Base):
+    pass
+
+RESULT = (Base.seen, Child.marker)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("Child", "ok")
+
+
+def test_class_getitem_defined_in_interpreted_class_is_implicitly_classmethod(run_interpreter):
+    source = """
+class Box:
+    def __class_getitem__(cls, item):
+        return (cls.__name__, item.__name__)
+
+RESULT = Box[int]
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("Box", "int")
+
+
 @pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
 def test_typealias_statement_builds_runtime_alias_with_params(run_interpreter):
     source = """

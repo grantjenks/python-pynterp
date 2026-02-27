@@ -84,6 +84,9 @@ Use this section as the source of truth for intentional exclusions.
 - Progress (2026-02-27, iter 005): Removed shared `tempcwd` probe-worker race by remapping `test.support.os_helper.temp_cwd()` default directory to a PID-scoped name inside the runner (`tempcwd-<pid>`) and cleaning only that worker-local path.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k tempcwd -q` => `1 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `5 passed`; targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_tools/test_msgfmt.py`) => `14 run, 0 errors`.
 - Expected full-probe delta on next rerun: suite-error signature `FileNotFoundError: [Errno 2] No such file or directory: 'messages.po'` should drop from `15` toward `0` (pending measurement).
+- Progress (2026-02-27, iter 006): Mirrored CPython class construction behavior by implicitly wrapping interpreted `__init_subclass__` and `__class_getitem__` hooks as `classmethod` when undecorated in class bodies, preventing missing-`cls` hook invocation errors.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "init_subclass or class_getitem" -q` => `2 passed`; `uv run pytest tests/test_core_semantics.py -q` => `69 passed, 3 skipped`.
+- Expected full-probe delta on next rerun: suite-error signature `TypeError: __init_subclass__() missing required argument 'cls'` should drop from `8` toward `0` (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
