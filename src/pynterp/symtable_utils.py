@@ -18,7 +18,7 @@ def _table_frees(table: symtable.SymbolTable) -> Set[str]:
     return {s.get_name() for s in table.get_symbols() if s.is_free()}
 
 
-def _contains_yield(fn_node: ast.FunctionDef) -> bool:
+def _contains_yield(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """
     True iff this function's body contains Yield/YieldFrom (ignoring nested defs/classes/lambdas).
     """

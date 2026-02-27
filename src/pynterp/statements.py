@@ -1,15 +1,153 @@
 from __future__ import annotations
 
 import ast
+import builtins as py_builtins
+import types as py_types
+import typing as py_typing
+from collections.abc import Mapping, Sequence
 from typing import Any, Dict, Iterator
 
-from .common import NO_DEFAULT, BreakSignal, Cell, ContinueSignal, ControlFlowSignal, ReturnSignal
+from .common import (
+    NO_DEFAULT,
+    AwaitRequest,
+    BreakSignal,
+    Cell,
+    ContinueSignal,
+    ControlFlowSignal,
+    ReturnSignal,
+)
 from .functions import UserFunction
 from .scopes import ClassBodyScope, RuntimeScope
 from .symtable_utils import _contains_yield
 
+_MISSING = object()
+_BUILTIN_MATCH_SELF_TYPES = (
+    bool,
+    bytearray,
+    bytes,
+    dict,
+    float,
+    frozenset,
+    int,
+    list,
+    set,
+    str,
+    tuple,
+)
+
+
+class _TypeAliasEvalScope(RuntimeScope):
+    def __init__(self, base_scope: RuntimeScope, type_param_bindings: Dict[str, Any]):
+        super().__init__(base_scope.code, base_scope.globals, base_scope.builtins)
+        self._base_scope = base_scope
+        self._type_param_bindings = type_param_bindings
+
+    def load(self, name: str) -> Any:
+        if name in self._type_param_bindings:
+            return self._type_param_bindings[name]
+        return self._base_scope.load(name)
+
+    def store(self, name: str, value: Any) -> Any:
+        if name in self._type_param_bindings:
+            self._type_param_bindings[name] = value
+            return value
+        return self._base_scope.store(name, value)
+
+    def unbind(self, name: str) -> None:
+        if name in self._type_param_bindings:
+            del self._type_param_bindings[name]
+            return
+        self._base_scope.unbind(name)
+
+    def delete(self, name: str) -> None:
+        if name in self._type_param_bindings:
+            del self._type_param_bindings[name]
+            return
+        self._base_scope.delete(name)
+
+    def capture_cell(self, name: str) -> Cell:
+        return self._base_scope.capture_cell(name)
+
+
+class _AsyncForAwaitable:
+    def __init__(self, iterator: Iterator[Any]):
+        self._iterator = iterator
+
+    def __await__(self) -> Iterator[Any]:
+        return self._iterator
+
 
 class StatementMixin:
+    def _typing_runtime_call(self, scope: RuntimeScope, factory: Any, /, *args: Any, **kwargs: Any) -> Any:
+        # Run typing factories under interpreted globals so `__module__` matches the interpreted module.
+        return eval(
+            "__pynterp_factory(*__pynterp_args, **__pynterp_kwargs)",
+            scope.globals,
+            {
+                "__pynterp_factory": factory,
+                "__pynterp_args": args,
+                "__pynterp_kwargs": kwargs,
+            },
+        )
+
+    def _build_type_param(
+        self, node: ast.AST, scope: RuntimeScope, type_param_bindings: Dict[str, Any]
+    ) -> Any:
+        eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
+
+        if isinstance(node, ast.TypeVar):
+            kwargs: Dict[str, Any] = {}
+            if node.default_value is not None:
+                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+            if node.bound is None:
+                return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
+            if isinstance(node.bound, ast.Tuple):
+                constraints = tuple(self.eval_expr(elt, eval_scope) for elt in node.bound.elts)
+                return self._typing_runtime_call(
+                    scope, py_typing.TypeVar, node.name, *constraints, **kwargs
+                )
+            kwargs["bound"] = self.eval_expr(node.bound, eval_scope)
+            return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
+
+        if isinstance(node, ast.ParamSpec):
+            kwargs: Dict[str, Any] = {}
+            if node.default_value is not None:
+                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+            return self._typing_runtime_call(scope, py_typing.ParamSpec, node.name, **kwargs)
+
+        if isinstance(node, ast.TypeVarTuple):
+            kwargs: Dict[str, Any] = {}
+            if node.default_value is not None:
+                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+            return self._typing_runtime_call(scope, py_typing.TypeVarTuple, node.name, **kwargs)
+
+        raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")
+
+    def exec_TypeAlias(self, node: ast.TypeAlias, scope: RuntimeScope) -> None:
+        if not isinstance(node.name, ast.Name):
+            raise NotImplementedError(
+                f"TypeAlias target not supported: {node.name.__class__.__name__}"
+            )
+
+        type_param_bindings: Dict[str, Any] = {}
+        type_params: list[Any] = []
+        for type_param_node in node.type_params:
+            type_param = self._build_type_param(type_param_node, scope, type_param_bindings)
+            type_param_bindings[type_param_node.name] = type_param
+            type_params.append(type_param)
+
+        alias_eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
+        alias_value = self.eval_expr(node.value, alias_eval_scope)
+        alias = self._typing_runtime_call(
+            scope,
+            py_typing.TypeAliasType,
+            node.name.id,
+            alias_value,
+            type_params=tuple(type_params),
+        )
+
+        scope.store(node.name.id, alias)
+
     def exec_Expr(self, node: ast.Expr, scope: RuntimeScope) -> None:
         self.eval_expr(node.value, scope)
 
@@ -44,18 +182,278 @@ class StatementMixin:
             anns[node.target.id] = ann
 
     def exec_AugAssign(self, node: ast.AugAssign, scope: RuntimeScope) -> None:
-        if not isinstance(node.target, ast.Name):
-            raise NotImplementedError("AugAssign only supports Name targets here")
-        name = node.target.id
-        old = scope.load(name)
+        old, store = self._resolve_augassign_target(node.target, scope)
         rhs = self.eval_expr(node.value, scope)
-        scope.store(name, self._apply_binop(node.op, old, rhs))
+        store(self._apply_augop(node.op, old, rhs))
 
     def exec_If(self, node: ast.If, scope: RuntimeScope) -> None:
         if self.eval_expr(node.test, scope):
             self.exec_block(node.body, scope)
         else:
             self.exec_block(node.orelse, scope)
+
+    def exec_Match(self, node: ast.Match, scope: RuntimeScope) -> None:
+        subject = self.eval_expr(node.subject, scope)
+        for case in node.cases:
+            bindings: Dict[str, Any] = {}
+            if not self._match_pattern(case.pattern, subject, scope, bindings):
+                continue
+            for name, value in bindings.items():
+                scope.store(name, value)
+            if case.guard is None or self.eval_expr(case.guard, scope):
+                self.exec_block(case.body, scope)
+                return
+
+    def _merge_match_bindings(self, dst: Dict[str, Any], src: Dict[str, Any]) -> bool:
+        for name, value in src.items():
+            if name not in dst:
+                dst[name] = value
+                continue
+            current = dst[name]
+            if current is value:
+                continue
+            try:
+                if current == value:
+                    continue
+            except BaseException:
+                pass
+            return False
+        return True
+
+    def _bind_match_name(self, bindings: Dict[str, Any], name: str, value: Any) -> bool:
+        return self._merge_match_bindings(bindings, {name: value})
+
+    def _match_pattern(
+        self, pattern: ast.pattern, subject: Any, scope: RuntimeScope, bindings: Dict[str, Any]
+    ) -> bool:
+        if isinstance(pattern, ast.MatchValue):
+            return subject == self.eval_expr(pattern.value, scope)
+
+        if isinstance(pattern, ast.MatchSingleton):
+            return subject is pattern.value
+
+        if isinstance(pattern, ast.MatchSequence):
+            return self._match_sequence_pattern(pattern, subject, scope, bindings)
+
+        if isinstance(pattern, ast.MatchMapping):
+            return self._match_mapping_pattern(pattern, subject, scope, bindings)
+
+        if isinstance(pattern, ast.MatchClass):
+            return self._match_class_pattern(pattern, subject, scope, bindings)
+
+        if isinstance(pattern, ast.MatchAs):
+            if pattern.pattern is not None:
+                inner_bindings: Dict[str, Any] = {}
+                if not self._match_pattern(pattern.pattern, subject, scope, inner_bindings):
+                    return False
+                if not self._merge_match_bindings(bindings, inner_bindings):
+                    return False
+            if pattern.name is not None:
+                return self._bind_match_name(bindings, pattern.name, subject)
+            return True
+
+        if isinstance(pattern, ast.MatchOr):
+            for subpattern in pattern.patterns:
+                inner_bindings: Dict[str, Any] = {}
+                if not self._match_pattern(subpattern, subject, scope, inner_bindings):
+                    continue
+                if not self._merge_match_bindings(bindings, inner_bindings):
+                    return False
+                return True
+            return False
+
+        raise NotImplementedError(f"Pattern not supported: {pattern.__class__.__name__}")
+
+    def _match_sequence_pattern(
+        self,
+        pattern: ast.MatchSequence,
+        subject: Any,
+        scope: RuntimeScope,
+        bindings: Dict[str, Any],
+    ) -> bool:
+        if isinstance(subject, Mapping):
+            return False
+        if isinstance(subject, (str, bytes, bytearray)):
+            return False
+        if not isinstance(subject, Sequence):
+            return False
+
+        items = list(subject)
+        patterns = list(pattern.patterns)
+        star_index = None
+        for idx, subpattern in enumerate(patterns):
+            if isinstance(subpattern, ast.MatchStar):
+                star_index = idx
+                break
+
+        if star_index is None:
+            if len(items) != len(patterns):
+                return False
+            for subpattern, item in zip(patterns, items):
+                inner_bindings: Dict[str, Any] = {}
+                if not self._match_pattern(subpattern, item, scope, inner_bindings):
+                    return False
+                if not self._merge_match_bindings(bindings, inner_bindings):
+                    return False
+            return True
+
+        head_patterns = patterns[:star_index]
+        tail_patterns = patterns[star_index + 1 :]
+        if len(items) < len(head_patterns) + len(tail_patterns):
+            return False
+
+        for subpattern, item in zip(head_patterns, items):
+            inner_bindings: Dict[str, Any] = {}
+            if not self._match_pattern(subpattern, item, scope, inner_bindings):
+                return False
+            if not self._merge_match_bindings(bindings, inner_bindings):
+                return False
+
+        star_pattern = patterns[star_index]
+        if not isinstance(star_pattern, ast.MatchStar):
+            raise RuntimeError("internal error: expected MatchStar")
+        star_count = len(items) - len(head_patterns) - len(tail_patterns)
+        star_values = list(items[len(head_patterns) : len(head_patterns) + star_count])
+        if star_pattern.name is not None and not self._bind_match_name(
+            bindings, star_pattern.name, star_values
+        ):
+            return False
+
+        if tail_patterns:
+            tail_items = items[len(items) - len(tail_patterns) :]
+            for subpattern, item in zip(tail_patterns, tail_items):
+                inner_bindings = {}
+                if not self._match_pattern(subpattern, item, scope, inner_bindings):
+                    return False
+                if not self._merge_match_bindings(bindings, inner_bindings):
+                    return False
+
+        return True
+
+    def _match_mapping_pattern(
+        self,
+        pattern: ast.MatchMapping,
+        subject: Any,
+        scope: RuntimeScope,
+        bindings: Dict[str, Any],
+    ) -> bool:
+        if not isinstance(subject, Mapping):
+            return False
+
+        keys: list[Any] = []
+        for key_node in pattern.keys:
+            keys.append(self.eval_expr(key_node, scope))
+
+        for index, key in enumerate(keys):
+            for previous in keys[:index]:
+                if key == previous:
+                    raise ValueError(f"mapping pattern checks duplicate key ({key!r})")
+
+        matched_values: list[Any] = []
+        for key in keys:
+            if hasattr(subject, "get"):
+                value = subject.get(key, _MISSING)
+            else:
+                try:
+                    value = subject[key]
+                except KeyError:
+                    value = _MISSING
+            if value is _MISSING:
+                return False
+            matched_values.append(value)
+
+        for subpattern, value in zip(pattern.patterns, matched_values):
+            inner_bindings: Dict[str, Any] = {}
+            if not self._match_pattern(subpattern, value, scope, inner_bindings):
+                return False
+            if not self._merge_match_bindings(bindings, inner_bindings):
+                return False
+
+        if pattern.rest is not None:
+            rest: Dict[Any, Any] = {}
+            for key, value in subject.items():
+                if any(key == matched_key for matched_key in keys):
+                    continue
+                rest[key] = value
+            if not self._bind_match_name(bindings, pattern.rest, rest):
+                return False
+        return True
+
+    def _match_class_pattern(
+        self,
+        pattern: ast.MatchClass,
+        subject: Any,
+        scope: RuntimeScope,
+        bindings: Dict[str, Any],
+    ) -> bool:
+        cls = self.eval_expr(pattern.cls, scope)
+        if not isinstance(cls, type):
+            raise TypeError("called match pattern must be a type")
+        if not isinstance(subject, cls):
+            return False
+
+        positional_patterns = list(pattern.patterns)
+        keyword_attrs = list(pattern.kwd_attrs)
+        keyword_patterns = list(pattern.kwd_patterns)
+        positional_attrs: list[str] = []
+        match_self = False
+
+        if positional_patterns:
+            match_args = getattr(cls, "__match_args__", _MISSING)
+            if match_args is _MISSING:
+                if cls in _BUILTIN_MATCH_SELF_TYPES:
+                    match_self = True
+                    match_args = ("__match_self__",)
+                else:
+                    match_args = ()
+            if not isinstance(match_args, tuple):
+                raise TypeError(f"{cls.__name__}.__match_args__ must be a tuple")
+            if len(positional_patterns) > len(match_args):
+                raise TypeError(
+                    f"{cls.__name__}() accepts {len(match_args)} positional sub-patterns"
+                )
+            for attr in match_args[: len(positional_patterns)]:
+                if not isinstance(attr, str):
+                    raise TypeError(
+                        f"{cls.__name__}.__match_args__ elements must be strings "
+                        f"(got {type(attr).__name__})"
+                    )
+                positional_attrs.append(attr)
+
+        seen_attrs = set()
+        for attr in positional_attrs:
+            if attr in seen_attrs:
+                raise TypeError(f"{cls.__name__}() got multiple sub-patterns for {attr!r}")
+            seen_attrs.add(attr)
+        for attr in keyword_attrs:
+            if attr in seen_attrs:
+                raise TypeError(f"{cls.__name__}() got multiple sub-patterns for {attr!r}")
+            seen_attrs.add(attr)
+
+        for subpattern, attr in zip(positional_patterns, positional_attrs):
+            if match_self and attr == "__match_self__":
+                value = subject
+            else:
+                value = getattr(subject, attr, _MISSING)
+                if value is _MISSING:
+                    return False
+            inner_bindings: Dict[str, Any] = {}
+            if not self._match_pattern(subpattern, value, scope, inner_bindings):
+                return False
+            if not self._merge_match_bindings(bindings, inner_bindings):
+                return False
+
+        for attr, subpattern in zip(keyword_attrs, keyword_patterns):
+            value = getattr(subject, attr, _MISSING)
+            if value is _MISSING:
+                return False
+            inner_bindings: Dict[str, Any] = {}
+            if not self._match_pattern(subpattern, value, scope, inner_bindings):
+                return False
+            if not self._merge_match_bindings(bindings, inner_bindings):
+                return False
+
+        return True
 
     def exec_While(self, node: ast.While, scope: RuntimeScope) -> None:
         broke = False
@@ -85,6 +483,64 @@ class StatementMixin:
         if (not broke) and node.orelse:
             self.exec_block(node.orelse, scope)
 
+    def _async_for_iter(self, iterable: Any) -> Any:
+        try:
+            iterator = py_builtins.aiter(iterable)
+        except TypeError as exc:
+            raise TypeError(
+                "'async for' requires an object with __aiter__ method, "
+                f"got {type(iterable).__name__}"
+            ) from exc
+
+        if not hasattr(iterator, "__anext__"):
+            raise TypeError(
+                "'async for' received an object from __aiter__ "
+                f"that does not implement __anext__: {type(iterator).__name__}"
+            )
+
+        return iterator
+
+    def _async_for_next_awaitable(self, iterator: Any) -> tuple[Any, Any, str]:
+        next_value = iterator.__anext__()
+        message = (
+            "'async for' received an invalid object from __anext__: "
+            f"{type(next_value).__name__}"
+        )
+
+        await_method = getattr(next_value, "__await__", None)
+        if await_method is None:
+            raise TypeError(message)
+        try:
+            await_iter = iter(await_method())
+        except BaseException as exc:
+            raise TypeError(message) from exc
+
+        return _AsyncForAwaitable(await_iter), next_value, message
+
+    def _async_with_method(self, manager: Any, method_name: str) -> Any:
+        method = getattr(manager, method_name, None)
+        if method is None:
+            manager_name = type(manager).__qualname__
+            raise TypeError(
+                f"'{manager_name}' object does not support the asynchronous context manager "
+                f"protocol (missed {method_name} method)"
+            )
+        return method
+
+    def _async_with_awaitable(self, value: Any, method_name: str) -> Any:
+        message = (
+            f"'async with' received an object from {method_name} "
+            f"that does not implement __await__: {type(value).__name__}"
+        )
+        await_method = getattr(value, "__await__", None)
+        if await_method is None:
+            raise TypeError(message)
+        try:
+            await_iter = iter(await_method())
+        except BaseException as exc:
+            raise TypeError(message) from exc
+        return _AsyncForAwaitable(await_iter)
+
     def exec_Break(self, node: ast.Break, scope: RuntimeScope) -> None:
         raise BreakSignal()
 
@@ -106,20 +562,22 @@ class StatementMixin:
     def exec_Nonlocal(self, node: ast.Nonlocal, scope: RuntimeScope) -> None:
         return
 
-    def exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> None:
-        defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
-        kw_defaults = [
-            (self.eval_expr(d, scope) if d is not None else NO_DEFAULT)
-            for d in (getattr(node.args, "kw_defaults", []) or [])
-        ]
+    def _make_user_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: RuntimeScope,
+        defaults: list[Any],
+        kw_defaults: list[Any],
+        *,
+        is_async: bool,
+    ) -> UserFunction:
+        contains_yield = _contains_yield(node)
 
         fn_table = scope.code.lookup_function_table(node)
         fn_scope_info = scope.code.scope_info_for(fn_table)
-
         closure = {name: scope.capture_cell(name) for name in fn_scope_info.frees}
-        is_gen = _contains_yield(node)
 
-        func = UserFunction(
+        return UserFunction(
             interpreter=self,
             node=node,
             code=scope.code,
@@ -129,7 +587,45 @@ class StatementMixin:
             closure=closure,
             defaults=defaults,
             kw_defaults=kw_defaults,
-            is_generator=is_gen,
+            is_generator=(not is_async) and contains_yield,
+            is_async=is_async,
+            is_async_generator=is_async and contains_yield,
+            qualname=self._qualname_for_definition(node.name, scope),
+        )
+
+    def exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> None:
+        defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
+        kw_defaults = [
+            (self.eval_expr(d, scope) if d is not None else NO_DEFAULT)
+            for d in (getattr(node.args, "kw_defaults", []) or [])
+        ]
+        func = self._make_user_function(
+            node,
+            scope,
+            defaults,
+            kw_defaults,
+            is_async=False,
+        )
+
+        decorated: Any = func
+        for dec_node in reversed(node.decorator_list or []):
+            dec = self.eval_expr(dec_node, scope)
+            decorated = dec(decorated)
+
+        scope.store(node.name, decorated)
+
+    def exec_AsyncFunctionDef(self, node: ast.AsyncFunctionDef, scope: RuntimeScope) -> None:
+        defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
+        kw_defaults = [
+            (self.eval_expr(d, scope) if d is not None else NO_DEFAULT)
+            for d in (getattr(node.args, "kw_defaults", []) or [])
+        ]
+        func = self._make_user_function(
+            node,
+            scope,
+            defaults,
+            kw_defaults,
+            is_async=True,
         )
 
         decorated: Any = func
@@ -140,7 +636,8 @@ class StatementMixin:
         scope.store(node.name, decorated)
 
     def exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> None:
-        bases = [self.eval_expr(b, scope) for b in node.bases]
+        orig_bases = tuple(self.eval_expr(b, scope) for b in node.bases)
+        bases = tuple(py_types.resolve_bases(orig_bases))
         kw: Dict[str, Any] = {}
         for k in node.keywords:
             if k.arg is None:
@@ -154,7 +651,9 @@ class StatementMixin:
 
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
-        class_ns.setdefault("__qualname__", node.name)
+        class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
+        if bases != orig_bases:
+            class_ns.setdefault("__orig_bases__", orig_bases)
         class_cell = Cell()
 
         body_scope = ClassBodyScope(
@@ -167,7 +666,7 @@ class StatementMixin:
         )
         self.exec_block(node.body, body_scope)
 
-        cls = meta(node.name, tuple(bases), class_ns, **kw)
+        cls = meta(node.name, bases, class_ns, **kw)
         class_cell.value = cls
 
         decorated: Any = cls
@@ -176,6 +675,48 @@ class StatementMixin:
             decorated = dec(decorated)
 
         scope.store(node.name, decorated)
+
+    def _except_star_targets_exception_group(self, exc_type: Any) -> bool:
+        if isinstance(exc_type, tuple):
+            return any(self._except_star_targets_exception_group(item) for item in exc_type)
+        if not isinstance(exc_type, type):
+            return False
+        try:
+            return issubclass(exc_type, py_builtins.BaseExceptionGroup)
+        except TypeError:
+            return False
+
+    def _raise_try_star_result(
+        self,
+        *,
+        original: BaseException,
+        original_was_group: bool,
+        remaining: BaseException | None,
+        raised: list[BaseException],
+    ) -> None:
+        if not raised and remaining is None:
+            return
+
+        if not raised:
+            if original_was_group:
+                if remaining is None:
+                    return
+                raise remaining
+            raise original
+
+        members: list[BaseException] = list(raised)
+        if remaining is not None:
+            members.append(remaining)
+
+        if len(members) == 1:
+            raise members[0]
+
+        if all(isinstance(member, Exception) for member in members):
+            raise py_builtins.ExceptionGroup(
+                "",
+                [member for member in members if isinstance(member, Exception)],
+            )
+        raise py_builtins.BaseExceptionGroup("", members)
 
     def exec_Try(self, node: ast.Try, scope: RuntimeScope) -> None:
         try:
@@ -194,9 +735,12 @@ class StatementMixin:
                     handled = True
                     if handler.name:
                         scope.store(handler.name, e)
+                    previous_exception = scope.active_exception
+                    scope.active_exception = e
                     try:
                         self.exec_block(handler.body, scope)
                     finally:
+                        scope.active_exception = previous_exception
                         if handler.name:
                             scope.unbind(handler.name)
                     break
@@ -209,9 +753,73 @@ class StatementMixin:
             if node.finalbody:
                 self.exec_block(node.finalbody, scope)
 
+    def exec_TryStar(self, node: ast.TryStar, scope: RuntimeScope) -> None:
+        try:
+            self.exec_block(node.body, scope)
+        except BaseException as e:
+            if isinstance(e, ControlFlowSignal):
+                raise
+
+            if isinstance(e, py_builtins.BaseExceptionGroup):
+                pending: BaseException | None = e
+                original_was_group = True
+            else:
+                if isinstance(e, Exception):
+                    pending = py_builtins.ExceptionGroup("", [e])
+                else:
+                    pending = py_builtins.BaseExceptionGroup("", [e])
+                original_was_group = False
+
+            raised: list[BaseException] = []
+            for handler in node.handlers:
+                if pending is None:
+                    break
+                if handler.type is None:
+                    exc_type: Any = BaseException
+                else:
+                    exc_type = self.eval_expr(handler.type, scope)
+                if self._except_star_targets_exception_group(exc_type):
+                    raise TypeError(
+                        "catching ExceptionGroup with except* is not allowed. Use except instead."
+                    )
+                matched, pending = pending.split(exc_type)
+                if matched is None:
+                    continue
+
+                if handler.name:
+                    scope.store(handler.name, matched)
+                previous_exception = scope.active_exception
+                scope.active_exception = matched
+                try:
+                    self.exec_block(handler.body, scope)
+                except BaseException as new_e:
+                    if isinstance(new_e, ControlFlowSignal):
+                        raise
+                    raised.append(new_e)
+                finally:
+                    scope.active_exception = previous_exception
+                    if handler.name:
+                        scope.unbind(handler.name)
+
+            self._raise_try_star_result(
+                original=e,
+                original_was_group=original_was_group,
+                remaining=pending,
+                raised=raised,
+            )
+
+        else:
+            if node.orelse:
+                self.exec_block(node.orelse, scope)
+        finally:
+            if node.finalbody:
+                self.exec_block(node.finalbody, scope)
+
     def exec_Raise(self, node: ast.Raise, scope: RuntimeScope) -> None:
         if node.exc is None:
-            raise RuntimeError("re-raise not supported in this interpreter")
+            if scope.active_exception is None:
+                raise RuntimeError("No active exception to reraise")
+            raise scope.active_exception
         exc = self.eval_expr(node.exc, scope)
         if isinstance(exc, BaseException):
             raise exc
@@ -262,19 +870,27 @@ class StatementMixin:
             for exit_ in reversed(exits):
                 exit_(None, None, None)
 
+    def exec_AsyncWith(self, node: ast.AsyncWith, scope: RuntimeScope) -> None:
+        raise SyntaxError("'async with' is only valid in async functions")
+
     def exec_Import(self, node: ast.Import, scope: RuntimeScope) -> None:
         for alias in node.names:
-            mod = self._import(alias.name, scope, fromlist=(), level=0)
+            fromlist: tuple[str, ...] = ()
+            if alias.asname and "." in alias.name:
+                # CPython binds "import pkg.mod as alias" to the leaf module,
+                # not the top-level package object.
+                fromlist = (alias.name.rsplit(".", 1)[-1],)
+
+            mod = self._import(alias.name, scope, fromlist=fromlist, level=0)
             bind = alias.asname or alias.name.split(".", 1)[0]
             scope.store(bind, mod)
 
     def exec_ImportFrom(self, node: ast.ImportFrom, scope: RuntimeScope) -> None:
         if node.level and not self.allow_relative_imports:
             raise ImportError("relative imports are not supported by this interpreter")
-        if node.module is None:
-            raise ImportError("from-import without module not supported")
+        import_name = node.module or ""
         fromlist = [a.name for a in node.names if a.name != "*"]
-        mod = self._import(node.module, scope, fromlist=fromlist or ("*",), level=node.level or 0)
+        mod = self._import(import_name, scope, fromlist=fromlist or ("*",), level=node.level or 0)
 
         for alias in node.names:
             if alias.name == "*":
@@ -325,12 +941,9 @@ class StatementMixin:
         return
 
     def g_exec_AugAssign(self, node: ast.AugAssign, scope: RuntimeScope) -> Iterator[Any]:
-        if not isinstance(node.target, ast.Name):
-            raise NotImplementedError("AugAssign only supports Name targets here")
-        name = node.target.id
-        old = scope.load(name)
+        old, store = yield from self.g_resolve_augassign_target(node.target, scope)
         rhs = yield from self.g_eval_expr(node.value, scope)
-        scope.store(name, self._apply_binop(node.op, old, rhs))
+        store(self._apply_augop(node.op, old, rhs))
         return
 
     def g_exec_If(self, node: ast.If, scope: RuntimeScope) -> Iterator[Any]:
@@ -339,6 +952,22 @@ class StatementMixin:
             yield from self.g_exec_block(node.body, scope)
         else:
             yield from self.g_exec_block(node.orelse, scope)
+        return
+
+    def g_exec_Match(self, node: ast.Match, scope: RuntimeScope) -> Iterator[Any]:
+        subject = yield from self.g_eval_expr(node.subject, scope)
+        for case in node.cases:
+            bindings: Dict[str, Any] = {}
+            if not self._match_pattern(case.pattern, subject, scope, bindings):
+                continue
+            for name, value in bindings.items():
+                scope.store(name, value)
+            if case.guard is not None:
+                guard = yield from self.g_eval_expr(case.guard, scope)
+                if not guard:
+                    continue
+            yield from self.g_exec_block(case.body, scope)
+            return
         return
 
     def g_exec_While(self, node: ast.While, scope: RuntimeScope) -> Iterator[Any]:
@@ -374,6 +1003,41 @@ class StatementMixin:
             yield from self.g_exec_block(node.orelse, scope)
         return
 
+    def g_exec_AsyncFor(self, node: ast.AsyncFor, scope: RuntimeScope) -> Iterator[Any]:
+        iterable = yield from self.g_eval_expr(node.iter, scope)
+        iterator = self._async_for_iter(iterable)
+        broke = False
+
+        while True:
+            try:
+                next_awaitable, raw_next, invalid_message = self._async_for_next_awaitable(iterator)
+            except StopAsyncIteration:
+                break
+
+            try:
+                item = yield AwaitRequest(next_awaitable)
+            except StopAsyncIteration:
+                break
+            except BaseException as exc:
+                # Keep asyncio/coroutine exceptions intact but wrap invalid custom awaitables
+                # with the async-for specific TypeError shape.
+                if not (hasattr(raw_next, "send") and hasattr(raw_next, "throw")):
+                    raise TypeError(invalid_message) from exc
+                raise
+
+            yield from self.g_assign_target(node.target, item, scope)
+            try:
+                yield from self.g_exec_block(node.body, scope)
+            except ContinueSignal:
+                continue
+            except BreakSignal:
+                broke = True
+                break
+
+        if (not broke) and node.orelse:
+            yield from self.g_exec_block(node.orelse, scope)
+        return
+
     def g_exec_Break(self, node: ast.Break, scope: RuntimeScope) -> Iterator[Any]:
         raise BreakSignal()
 
@@ -398,23 +1062,39 @@ class StatementMixin:
             kw_defaults.append(
                 (yield from self.g_eval_expr(d, scope)) if d is not None else NO_DEFAULT
             )
+        func = self._make_user_function(
+            node,
+            scope,
+            defaults,
+            kw_defaults,
+            is_async=False,
+        )
 
-        fn_table = scope.code.lookup_function_table(node)
-        fn_scope_info = scope.code.scope_info_for(fn_table)
-        closure = {name: scope.capture_cell(name) for name in fn_scope_info.frees}
-        is_gen = _contains_yield(node)
+        decorated: Any = func
+        for dec_node in reversed(node.decorator_list or []):
+            dec = yield from self.g_eval_expr(dec_node, scope)
+            decorated = dec(decorated)
 
-        func = UserFunction(
-            interpreter=self,
-            node=node,
-            code=scope.code,
-            globals_dict=scope.globals,
-            builtins_dict=scope.builtins,
-            scope_info=fn_scope_info,
-            closure=closure,
-            defaults=defaults,
-            kw_defaults=kw_defaults,
-            is_generator=is_gen,
+        scope.store(node.name, decorated)
+        return
+
+    def g_exec_AsyncFunctionDef(
+        self, node: ast.AsyncFunctionDef, scope: RuntimeScope
+    ) -> Iterator[Any]:
+        defaults: list[Any] = []
+        for d in node.args.defaults or []:
+            defaults.append((yield from self.g_eval_expr(d, scope)))
+        kw_defaults: list[Any] = []
+        for d in getattr(node.args, "kw_defaults", []) or []:
+            kw_defaults.append(
+                (yield from self.g_eval_expr(d, scope)) if d is not None else NO_DEFAULT
+            )
+        func = self._make_user_function(
+            node,
+            scope,
+            defaults,
+            kw_defaults,
+            is_async=True,
         )
 
         decorated: Any = func
@@ -426,9 +1106,10 @@ class StatementMixin:
         return
 
     def g_exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> Iterator[Any]:
-        bases = []
+        orig_bases: list[Any] = []
         for b in node.bases:
-            bases.append((yield from self.g_eval_expr(b, scope)))
+            orig_bases.append((yield from self.g_eval_expr(b, scope)))
+        bases = tuple(py_types.resolve_bases(tuple(orig_bases)))
         kw: Dict[str, Any] = {}
         for k in node.keywords:
             if k.arg is None:
@@ -442,7 +1123,9 @@ class StatementMixin:
 
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
-        class_ns.setdefault("__qualname__", node.name)
+        class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
+        if bases != tuple(orig_bases):
+            class_ns.setdefault("__orig_bases__", tuple(orig_bases))
         class_cell = Cell()
 
         body_scope = ClassBodyScope(
@@ -456,7 +1139,7 @@ class StatementMixin:
         # class body itself cannot yield (syntax), so normal exec is OK:
         self.exec_block(node.body, body_scope)
 
-        cls = meta(node.name, tuple(bases), class_ns, **kw)
+        cls = meta(node.name, bases, class_ns, **kw)
         class_cell.value = cls
 
         decorated: Any = cls
@@ -484,9 +1167,12 @@ class StatementMixin:
                     handled = True
                     if handler.name:
                         scope.store(handler.name, e)
+                    previous_exception = scope.active_exception
+                    scope.active_exception = e
                     try:
                         yield from self.g_exec_block(handler.body, scope)
                     finally:
+                        scope.active_exception = previous_exception
                         if handler.name:
                             scope.unbind(handler.name)
                     break
@@ -500,9 +1186,73 @@ class StatementMixin:
                 yield from self.g_exec_block(node.finalbody, scope)
         return
 
+    def g_exec_TryStar(self, node: ast.TryStar, scope: RuntimeScope) -> Iterator[Any]:
+        try:
+            yield from self.g_exec_block(node.body, scope)
+        except BaseException as e:
+            if isinstance(e, ControlFlowSignal):
+                raise
+
+            if isinstance(e, py_builtins.BaseExceptionGroup):
+                pending: BaseException | None = e
+                original_was_group = True
+            else:
+                if isinstance(e, Exception):
+                    pending = py_builtins.ExceptionGroup("", [e])
+                else:
+                    pending = py_builtins.BaseExceptionGroup("", [e])
+                original_was_group = False
+
+            raised: list[BaseException] = []
+            for handler in node.handlers:
+                if pending is None:
+                    break
+                if handler.type is None:
+                    exc_type: Any = BaseException
+                else:
+                    exc_type = yield from self.g_eval_expr(handler.type, scope)
+                if self._except_star_targets_exception_group(exc_type):
+                    raise TypeError(
+                        "catching ExceptionGroup with except* is not allowed. Use except instead."
+                    )
+                matched, pending = pending.split(exc_type)
+                if matched is None:
+                    continue
+
+                if handler.name:
+                    scope.store(handler.name, matched)
+                previous_exception = scope.active_exception
+                scope.active_exception = matched
+                try:
+                    yield from self.g_exec_block(handler.body, scope)
+                except BaseException as new_e:
+                    if isinstance(new_e, ControlFlowSignal):
+                        raise
+                    raised.append(new_e)
+                finally:
+                    scope.active_exception = previous_exception
+                    if handler.name:
+                        scope.unbind(handler.name)
+
+            self._raise_try_star_result(
+                original=e,
+                original_was_group=original_was_group,
+                remaining=pending,
+                raised=raised,
+            )
+        else:
+            if node.orelse:
+                yield from self.g_exec_block(node.orelse, scope)
+        finally:
+            if node.finalbody:
+                yield from self.g_exec_block(node.finalbody, scope)
+        return
+
     def g_exec_Raise(self, node: ast.Raise, scope: RuntimeScope) -> Iterator[Any]:
         if node.exc is None:
-            raise RuntimeError("re-raise not supported in this interpreter")
+            if scope.active_exception is None:
+                raise RuntimeError("No active exception to reraise")
+            raise scope.active_exception
         exc = yield from self.g_eval_expr(node.exc, scope)
         if isinstance(exc, BaseException):
             raise exc
@@ -555,6 +1305,57 @@ class StatementMixin:
 
         return
 
+    def g_exec_AsyncWith(self, node: ast.AsyncWith, scope: RuntimeScope) -> Iterator[Any]:
+        exits = []
+        try:
+            for item in node.items:
+                mgr = yield from self.g_eval_expr(item.context_expr, scope)
+                exit_ = self._async_with_method(mgr, "__aexit__")
+                enter = self._async_with_method(mgr, "__aenter__")
+                val = yield AwaitRequest(self._async_with_awaitable(enter(), "__aenter__"))
+                exits.append(exit_)
+                if item.optional_vars is not None:
+                    yield from self.g_assign_target(item.optional_vars, val, scope)
+
+            yield from self.g_exec_block(node.body, scope)
+
+        except ControlFlowSignal:
+            for exit_ in reversed(exits):
+                yield AwaitRequest(
+                    self._async_with_awaitable(exit_(None, None, None), "__aexit__")
+                )
+            raise
+
+        except BaseException as e:
+            exc_type = type(e)
+            exc = e
+            tb = e.__traceback__
+
+            for exit_ in reversed(exits):
+                try:
+                    suppress = yield AwaitRequest(
+                        self._async_with_awaitable(exit_(exc_type, exc, tb), "__aexit__")
+                    )
+                except BaseException as new_e:
+                    exc_type = type(new_e)
+                    exc = new_e
+                    tb = new_e.__traceback__
+                    continue
+                if suppress:
+                    exc_type = exc = tb = None
+
+            if exc_type is None:
+                return
+            raise exc
+
+        else:
+            for exit_ in reversed(exits):
+                yield AwaitRequest(
+                    self._async_with_awaitable(exit_(None, None, None), "__aexit__")
+                )
+
+        return
+
     def g_exec_Import(self, node: ast.Import, scope: RuntimeScope) -> Iterator[Any]:
         self.exec_Import(node, scope)
         return
@@ -562,6 +1363,11 @@ class StatementMixin:
 
     def g_exec_ImportFrom(self, node: ast.ImportFrom, scope: RuntimeScope) -> Iterator[Any]:
         self.exec_ImportFrom(node, scope)
+        return
+        yield
+
+    def g_exec_TypeAlias(self, node: ast.TypeAlias, scope: RuntimeScope) -> Iterator[Any]:
+        self.exec_TypeAlias(node, scope)
         return
         yield
 

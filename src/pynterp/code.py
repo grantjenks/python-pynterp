@@ -39,8 +39,10 @@ class ModuleCode:
 
         self._tables_by_key: Dict[tuple[str, str, int], list[symtable.SymbolTable]] = {}
         self._cellvars_by_id: Dict[int, Set[str]] = {}
+        self._lambda_occurrence_by_location: Dict[tuple[int, int], int] = {}
 
         self._index_tables(self.sym_root)
+        self._index_lambda_occurrences()
         self._compute_cellvars(self.sym_root)
 
     def _index_tables(self, table: symtable.SymbolTable) -> None:
@@ -63,7 +65,22 @@ class ModuleCode:
         else:
             self._cellvars_by_id[table.get_id()] = set()
 
-    def lookup_function_table(self, fn_node: ast.FunctionDef) -> symtable.Function:
+    def _index_lambda_occurrences(self) -> None:
+        lambda_counts_by_line: Dict[int, int] = {}
+
+        class Visitor(ast.NodeVisitor):
+            def visit_Lambda(self, node: ast.Lambda) -> None:
+                index = lambda_counts_by_line.get(node.lineno, 0)
+                lambda_counts_by_line[node.lineno] = index + 1
+                self_outer._lambda_occurrence_by_location[(node.lineno, node.col_offset)] = index
+                self.generic_visit(node)
+
+        self_outer = self
+        Visitor().visit(self.tree)
+
+    def lookup_function_table(
+        self, fn_node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> symtable.Function:
         key = ("function", fn_node.name, fn_node.lineno)
         tables = self._tables_by_key.get(key, [])
         if not tables:
@@ -77,6 +94,29 @@ class ModuleCode:
         tbl = tables[0]
         if not isinstance(tbl, symtable.Function):
             raise RuntimeError("lookup_function_table returned non-function table")
+        return tbl
+
+    def lookup_lambda_table(self, lambda_node: ast.Lambda) -> symtable.Function:
+        key = ("function", "lambda", lambda_node.lineno)
+        tables = self._tables_by_key.get(key, [])
+        if not tables:
+            raise RuntimeError(
+                "Could not find symtable for lambda at "
+                f"line {lambda_node.lineno}:{lambda_node.col_offset}"
+            )
+        if len(tables) == 1:
+            tbl = tables[0]
+        else:
+            location = (lambda_node.lineno, lambda_node.col_offset)
+            index = self._lambda_occurrence_by_location.get(location)
+            if index is None or index >= len(tables):
+                raise RuntimeError(
+                    "Ambiguous symtable match for lambda at "
+                    f"line {lambda_node.lineno}:{lambda_node.col_offset}"
+                )
+            tbl = tables[index]
+        if not isinstance(tbl, symtable.Function):
+            raise RuntimeError("lookup_lambda_table returned non-function table")
         return tbl
 
     def scope_info_for(self, fn_table: symtable.Function) -> ScopeInfo:

@@ -11,16 +11,17 @@ if TYPE_CHECKING:
 
 
 class BoundMethod:
-    def __init__(self, func: "UserFunction", self_obj: Any):
-        self._func = func
-        self._self = self_obj
-        self.__name__ = getattr(func, "__name__", type(func).__name__)
+    def __init__(bound, func: "UserFunction", self_obj: Any):
+        bound._func = func
+        bound._self = self_obj
+        bound.__name__ = getattr(func, "__name__", type(func).__name__)
+        bound.__func__ = func
 
-    def __call__(self, *args, **kwargs):
-        return self._func(self._self, *args, **kwargs)
+    def __call__(bound, *args, **kwargs):
+        return bound._func(bound._self, *args, **kwargs)
 
-    def __repr__(self) -> str:
-        return f"<bound method {self._func!r} of {self._self!r}>"
+    def __repr__(bound) -> str:
+        return f"<bound method {bound._func!r} of {bound._self!r}>"
 
 
 class UserFunction:
@@ -34,7 +35,7 @@ class UserFunction:
     def __init__(
         self,
         interpreter: "Interpreter",
-        node: ast.FunctionDef,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
         code: ModuleCode,
         globals_dict: dict,
         builtins_dict: dict,
@@ -43,6 +44,9 @@ class UserFunction:
         defaults: list[Any],
         kw_defaults: list[Any],
         is_generator: bool,
+        is_async: bool = False,
+        is_async_generator: bool = False,
+        qualname: str | None = None,
     ):
         self.interpreter = interpreter
         self.node = node
@@ -54,15 +58,25 @@ class UserFunction:
         self.defaults = list(defaults)
         self.kw_defaults = list(kw_defaults)
         self.is_generator = is_generator
-        self.__name__ = node.name
-        self.__qualname__ = node.name
+        self.is_async = is_async
+        self.is_async_generator = is_async_generator
+        name = node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<lambda>"
+        self.__name__ = name
+        self.__qualname__ = qualname if qualname is not None else name
 
     def __repr__(self) -> str:
-        kind = "gen" if self.is_generator else "func"
+        if self.is_async_generator:
+            kind = "async-gen"
+        elif self.is_async:
+            kind = "async"
+        elif self.is_generator:
+            kind = "gen"
+        else:
+            kind = "func"
         return f"<UserFunction {self.__name__} ({kind})>"
 
-    def __call__(self, *args, **kwargs):
-        return self.interpreter._call_user_function(self, args, kwargs)
+    def __call__(user_function, *args, **kwargs):
+        return user_function.interpreter._call_user_function(user_function, args, kwargs)
 
     def __get__(self, obj, objtype=None):
         if obj is None:

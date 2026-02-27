@@ -7,7 +7,9 @@ from .guards import safe_delattr, safe_getattr, safe_hasattr, safe_setattr
 
 _COMMON_BUILTIN_NAMES = (
     "BaseException",
+    "BaseExceptionGroup",
     "Exception",
+    "ExceptionGroup",
     "ImportError",
     "NameError",
     "NotImplementedError",
@@ -19,6 +21,8 @@ _COMMON_BUILTIN_NAMES = (
     "all",
     "any",
     "bool",
+    "bytearray",
+    "bytes",
     "callable",
     "dict",
     "enumerate",
@@ -40,6 +44,7 @@ _COMMON_BUILTIN_NAMES = (
     "round",
     "set",
     "slice",
+    "staticmethod",
     "str",
     "super",
     "sum",

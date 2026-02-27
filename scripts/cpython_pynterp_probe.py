@@ -37,6 +37,7 @@ from pathlib import Path
 import builtins
 import io
 import json
+import shutil
 import sys
 import types
 import unittest
@@ -56,6 +57,39 @@ from pynterp import Interpreter
 
 def emit(payload):
     print("{RESULT_MARKER}" + json.dumps(payload))
+
+def cleanup_probe_workdir():
+    # Keep probe runs isolated from stale temp_cwd artifacts left by prior modules.
+    stale = Path.cwd() / "tempcwd"
+    try:
+        if stale.is_symlink() or stale.is_file():
+            stale.unlink()
+        elif stale.is_dir():
+            shutil.rmtree(stale)
+    except OSError:
+        pass
+
+cleanup_probe_workdir()
+
+def patch_system_limit_probe():
+    # Some sandboxed environments raise PermissionError for sysconf sem-limit
+    # queries. Treat that as "system-limited" for probe stability.
+    try:
+        import concurrent.futures.process as process_mod
+    except Exception:
+        return
+
+    original = process_mod._check_system_limits
+
+    def wrapped():
+        try:
+            return original()
+        except PermissionError as exc:
+            raise NotImplementedError(str(exc))
+
+    process_mod._check_system_limits = wrapped
+
+patch_system_limit_probe()
 
 source = test_path.read_text(encoding="utf-8", errors="ignore")
 interp = Interpreter(allowed_imports=None, allow_relative_imports=True)
@@ -92,19 +126,41 @@ if basis == "files":
 module = types.ModuleType(name)
 module.__dict__.update(env)
 
+original_module = sys.modules.get(name)
+sys.modules[name] = module
 try:
-    suite = unittest.defaultTestLoader.loadTestsFromModule(module)
-    stream = io.StringIO()
-    result = unittest.TextTestRunner(stream=stream, verbosity=0).run(suite)
-except BaseException as exc:
-    is_skip = isinstance(exc, unittest.SkipTest) or exc.__class__.__name__.endswith("SkipTest")
-    emit(
-        {{
-            "status": "skip_suite" if is_skip else "suite_error",
-            "reason": f"{{type(exc).__name__}}: {{exc}}",
-        }}
-    )
-    raise SystemExit(0)
+    try:
+        suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+        stream = io.StringIO()
+        result = unittest.TextTestRunner(stream=stream, verbosity=0).run(suite)
+    except BaseException as exc:
+        is_skip = isinstance(exc, unittest.SkipTest) or exc.__class__.__name__.endswith("SkipTest")
+        emit(
+            {{
+                "status": "skip_suite" if is_skip else "suite_error",
+                "reason": f"{{type(exc).__name__}}: {{exc}}",
+            }}
+        )
+        raise SystemExit(0)
+finally:
+    if original_module is None:
+        sys.modules.pop(name, None)
+    else:
+        sys.modules[name] = original_module
+
+
+def extract_error_signature(err_text):
+    for line in reversed(err_text.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return "UnknownError"
+
+
+error_signature_counts = {{}}
+for _test, err_text in result.errors:
+    signature = extract_error_signature(err_text)
+    error_signature_counts[signature] = error_signature_counts.get(signature, 0) + 1
 
 emit(
     {{
@@ -115,6 +171,10 @@ emit(
         "skipped": len(result.skipped),
         "expected_failures": len(result.expectedFailures),
         "unexpected_successes": len(result.unexpectedSuccesses),
+        "error_signatures": sorted(
+            error_signature_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:10],
     }}
 )
 """
@@ -320,6 +380,31 @@ def parse_runner_payload(proc: subprocess.CompletedProcess[str]) -> dict[str, An
     return {"status": "import_error", "reason": reason}
 
 
+def parse_error_signatures(raw_signatures: Any) -> list[tuple[str, int]]:
+    if not isinstance(raw_signatures, list):
+        return []
+
+    pairs: list[tuple[str, int]] = []
+    for item in raw_signatures:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+
+        signature, count = item
+        signature_text = str(signature).strip()
+        if not signature_text:
+            continue
+        try:
+            count_value = int(count)
+        except (TypeError, ValueError):
+            continue
+        if count_value <= 0:
+            continue
+
+        pairs.append((signature_text, count_value))
+
+    return pairs
+
+
 def run_case(
     case: TestCase,
     *,
@@ -406,6 +491,8 @@ def main() -> int:
     reason_counts: Counter[str] = Counter()
     category_counts: Counter[str] = Counter()
     category_files: dict[str, list[str]] = defaultdict(list)
+    suite_error_signature_counts: Counter[str] = Counter()
+    suite_error_signature_files: dict[str, list[str]] = defaultdict(list)
     failed_cases: list[str] = []
 
     individual_counts: Counter[str] = Counter()
@@ -494,6 +581,14 @@ def main() -> int:
                         case_path=case_path,
                         weight=errors,
                     )
+                    signature_pairs = parse_error_signatures(payload.get("error_signatures"))
+                    if signature_pairs:
+                        for signature, count in signature_pairs:
+                            suite_error_signature_counts[signature] += count
+                            suite_error_signature_files[signature].append(case_path)
+                    else:
+                        suite_error_signature_counts["UnknownErrorSignature"] += errors
+                        suite_error_signature_files["UnknownErrorSignature"].append(case_path)
                 if unexpected_successes:
                     add_category(
                         category_counts=category_counts,
@@ -541,6 +636,16 @@ def main() -> int:
             }
         )
 
+    top_suite_error_signatures = []
+    for signature, count in suite_error_signature_counts.most_common(20):
+        top_suite_error_signatures.append(
+            {
+                "signature": signature,
+                "count": count,
+                "top_files": suite_error_signature_files[signature][: max(1, args.top_files_per_category)],
+            }
+        )
+
     report: dict[str, Any] = {
         "basis": args.basis,
         "mode": args.mode,
@@ -571,6 +676,7 @@ def main() -> int:
         },
         "top_fail_reasons": reason_counts.most_common(20),
         "top_fail_categories": top_fail_categories,
+        "top_suite_error_signatures": top_suite_error_signatures,
         "sample_failed_cases": failed_cases[:50],
     }
 
@@ -640,6 +746,13 @@ def main() -> int:
         print(f"{item['count']:4d} | {item['category']}")
         for path in item["top_files"]:
             print(f"       - {path}")
+
+    if top_suite_error_signatures:
+        print("top_suite_error_signatures:")
+        for item in top_suite_error_signatures:
+            print(f"{item['count']:4d} | {item['signature']}")
+            for path in item["top_files"]:
+                print(f"       - {path}")
 
     if args.json_out:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)

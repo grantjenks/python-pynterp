@@ -49,7 +49,11 @@ class InterpreterCore:
             raise ImportError("relative imports are not supported by this interpreter")
         if not self._is_allowed_module(name):
             raise ImportError(f"import of '{name}' is not allowed")
-        return import_safe_stdlib_module(name)
+        module = import_safe_stdlib_module(name)
+        # Match __import__ behavior: without fromlist, return the top-level package.
+        if not fromlist and "." in name:
+            return import_safe_stdlib_module(name.split(".", 1)[0])
+        return module
 
     def _import(self, name: str, scope: RuntimeScope, fromlist=(), level=0):
         imp = scope.builtins.get("__import__")

@@ -3,7 +3,10 @@ import __future__
 
 import ast
 import builtins
+import collections
+import collections.abc
 import math
+import operator
 import pathlib
 import symtable
 import types
@@ -14,7 +17,10 @@ SAFE_STDLIB_MODULES: dict[str, ModuleType] = {
     "__future__": __future__,
     "ast": ast,
     "builtins": builtins,
+    "collections": collections,
+    "collections.abc": collections.abc,
     "math": math,
+    "operator": operator,
     "pathlib": pathlib,
     "symtable": symtable,
     "types": types,

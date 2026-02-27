@@ -9,7 +9,7 @@ Repeatedly runs `codex exec` in fresh processes to burn down TODO.md.
 
 Options:
   -n, --max-iterations N   Maximum loop count (default: 1000)
-  --max-stagnant N         Stop after N no-progress iterations (default: 10)
+  --max-stagnant N         Stop after N no-progress iterations (default: 10, 0 disables)
   --sleep SECONDS          Delay between iterations (default: 1)
   -C, --cd DIR             Repository/work dir for codex and git (default: .)
   --log-dir DIR            Directory for per-iteration logs (default: .todo-loop)
@@ -112,8 +112,8 @@ if [[ ! "$MAX_ITERATIONS" =~ ^[0-9]+$ ]] || [[ "$MAX_ITERATIONS" -lt 1 ]]; then
   exit 2
 fi
 
-if [[ ! "$MAX_STAGNANT" =~ ^[0-9]+$ ]] || [[ "$MAX_STAGNANT" -lt 1 ]]; then
-  echo "--max-stagnant must be a positive integer" >&2
+if [[ ! "$MAX_STAGNANT" =~ ^[0-9]+$ ]]; then
+  echo "--max-stagnant must be a non-negative integer" >&2
   exit 2
 fi
 
@@ -125,6 +125,10 @@ fi
 WORKDIR="$(cd "$WORKDIR" && pwd)"
 LOG_DIR_ABS="$WORKDIR/$LOG_DIR"
 mkdir -p "$LOG_DIR_ABS"
+LOG_DIR_REL="${LOG_DIR_ABS#$WORKDIR/}"
+if [[ "$LOG_DIR_REL" == "$LOG_DIR_ABS" ]]; then
+  LOG_DIR_REL=""
+fi
 
 if [[ -n "$PROMPT_FILE" ]] && [[ ! -f "$PROMPT_FILE" ]]; then
   echo "--prompt-file not found: $PROMPT_FILE" >&2
@@ -140,6 +144,36 @@ if [[ "$ALLOW_DIRTY" -eq 0 ]] && [[ -n "$(git -C "$WORKDIR" status --porcelain)"
   echo "Working tree is dirty. Commit/stash first, or pass --allow-dirty." >&2
   exit 1
 fi
+
+repo_state_fingerprint() {
+  (
+    cd "$WORKDIR"
+    {
+      git rev-parse HEAD
+
+      tracked_args=(--no-ext-diff --binary -- .)
+      if [[ -n "$LOG_DIR_REL" ]]; then
+        tracked_args+=(":(exclude)$LOG_DIR_REL")
+      fi
+      git diff "${tracked_args[@]}"
+      git diff --cached "${tracked_args[@]}"
+
+      while IFS= read -r path; do
+        if [[ -n "$LOG_DIR_REL" ]]; then
+          case "$path" in
+            "$LOG_DIR_REL"|"$LOG_DIR_REL"/*) continue ;;
+          esac
+        fi
+        printf 'UNTRACKED %s\n' "$path"
+        if [[ -f "$path" ]]; then
+          shasum "$path"
+        else
+          printf 'NONFILE\n'
+        fi
+      done < <(git ls-files --others --exclude-standard -- .)
+    } | shasum | awk '{print $1}'
+  )
+}
 
 read -r -d '' BASE_PROMPT <<EOF || true
 You are running inside an iterative TODO loop to make progress on TODO.md.
@@ -168,7 +202,7 @@ echo "Max iterations: $MAX_ITERATIONS | Max stagnant: $MAX_STAGNANT"
 
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
   before_head="$(git -C "$WORKDIR" rev-parse HEAD)"
-  before_status="$(git -C "$WORKDIR" status --porcelain)"
+  before_state="$(repo_state_fingerprint)"
 
   iter_prompt="$BASE_PROMPT
 
@@ -212,12 +246,12 @@ $EXTRA_PROMPT"
   fi
 
   after_head="$(git -C "$WORKDIR" rev-parse HEAD)"
-  after_status="$(git -C "$WORKDIR" status --porcelain)"
+  after_state="$(repo_state_fingerprint)"
 
   progressed=0
   if [[ "$after_head" != "$before_head" ]]; then
     progressed=1
-  elif [[ "$after_status" != "$before_status" ]]; then
+  elif [[ "$after_state" != "$before_state" ]]; then
     progressed=1
   fi
 
@@ -229,7 +263,7 @@ $EXTRA_PROMPT"
     echo "No repo change detected (stagnant=$stagnant/$MAX_STAGNANT)."
   fi
 
-  if [[ "$stagnant" -ge "$MAX_STAGNANT" ]]; then
+  if [[ "$MAX_STAGNANT" -gt 0 ]] && [[ "$stagnant" -ge "$MAX_STAGNANT" ]]; then
     echo "Stopping: reached max stagnant iterations."
     exit 0
   fi

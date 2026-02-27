@@ -23,6 +23,15 @@ class ContinueSignal(ControlFlowSignal):
     pass
 
 
+class AwaitRequest:
+    """Internal value used to hand awaitables from the AST runner to async trampoline."""
+
+    __slots__ = ("awaitable",)
+
+    def __init__(self, awaitable: Any):
+        self.awaitable = awaitable
+
+
 class Cell:
     """A tiny closure cell."""
 

@@ -11,6 +11,7 @@ class RuntimeScope:
         self.code = code
         self.globals = globals_dict
         self.builtins = builtins_dict
+        self.active_exception: BaseException | None = None
 
     def load(self, name: str) -> Any:
         raise NotImplementedError
@@ -63,10 +64,13 @@ class FunctionScope(RuntimeScope):
         builtins_dict: dict,
         scope_info: ScopeInfo,
         closure: Dict[str, Cell],
+        *,
+        qualname: str | None = None,
     ):
         super().__init__(code, globals_dict, builtins_dict)
         self.scope_info = scope_info
         self.closure = dict(closure)
+        self.qualname = qualname
 
         # locals maps name -> value OR Cell
         self.locals: Dict[str, Any] = {}

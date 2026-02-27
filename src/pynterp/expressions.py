@@ -2,17 +2,63 @@ from __future__ import annotations
 
 import ast
 import builtins
-from typing import Any, Dict, Iterator
+from typing import Any, Callable, Dict, Iterator
 
-from .common import UNBOUND
+from .common import NO_DEFAULT, UNBOUND, AwaitRequest
+from .functions import UserFunction
+from .helpers import InterpretedAsyncGenerator
 from .lib.guards import guard_attr_name
 from .scopes import ComprehensionScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
 
 _NO_SUPER = object()
+_TYPING_RUNTIME_FACTORIES = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple", "NewType"})
+
+try:  # Python < 3.14 has no t-string runtime objects.
+    from string.templatelib import Interpolation as TemplateInterpolation
+    from string.templatelib import Template as TemplateString
+except ImportError:  # pragma: no cover - exercised only on older runtimes.
+    TemplateInterpolation = None
+    TemplateString = None
 
 
 class ExpressionMixin:
+    def _maybe_fix_typing_runtime_module(self, func: Any, result: Any, scope: RuntimeScope) -> Any:
+        if getattr(func, "__module__", None) != "typing":
+            return result
+        if getattr(func, "__name__", None) not in _TYPING_RUNTIME_FACTORIES:
+            return result
+        module_name = scope.globals.get("__name__")
+        if not isinstance(module_name, str) or not module_name:
+            return result
+        if getattr(result, "__module__", None) != __name__:
+            return result
+        try:
+            setattr(result, "__module__", module_name)
+        except Exception:
+            pass
+        return result
+
+    def _template_conversion(self, conversion: int) -> str | None:
+        if conversion == -1:
+            return None
+        if conversion == 115:  # !s
+            return "s"
+        if conversion == 114:  # !r
+            return "r"
+        if conversion == 97:  # !a
+            return "a"
+        raise NotImplementedError(f"Unsupported template conversion {conversion!r}")
+
+    def _build_template_interpolation(
+        self, value: Any, expression: str | None, conversion: int, format_spec: str
+    ) -> Any:
+        if TemplateInterpolation is None:
+            raise NotImplementedError("TemplateStr is not supported on this Python runtime")
+        return TemplateInterpolation(
+            value, expression if expression is not None else "", self._template_conversion(conversion), format_spec
+        )
+
     def _callable_name(self, func: Any) -> str:
         return getattr(func, "__name__", type(func).__name__)
 
@@ -114,6 +160,47 @@ class ExpressionMixin:
     def eval_IfExp(self, node: ast.IfExp, scope: RuntimeScope) -> Any:
         return self.eval_expr(node.body if self.eval_expr(node.test, scope) else node.orelse, scope)
 
+    def _namedexpr_store_scope(self, scope: RuntimeScope) -> RuntimeScope:
+        target_scope = scope
+        while isinstance(target_scope, ComprehensionScope):
+            target_scope = target_scope.outer_scope
+        return target_scope
+
+    def _store_namedexpr_target(self, target: ast.expr, value: Any, scope: RuntimeScope) -> None:
+        if not isinstance(target, ast.Name):
+            raise NotImplementedError(
+                f"NamedExpr target not supported: {target.__class__.__name__}"
+            )
+        self._namedexpr_store_scope(scope).store(target.id, value)
+
+    def eval_NamedExpr(self, node: ast.NamedExpr, scope: RuntimeScope) -> Any:
+        value = self.eval_expr(node.value, scope)
+        self._store_namedexpr_target(node.target, value, scope)
+        return value
+
+    def eval_Lambda(self, node: ast.Lambda, scope: RuntimeScope) -> UserFunction:
+        defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
+        kw_defaults = [
+            (self.eval_expr(d, scope) if d is not None else NO_DEFAULT)
+            for d in (getattr(node.args, "kw_defaults", []) or [])
+        ]
+        lambda_table = scope.code.lookup_lambda_table(node)
+        lambda_scope_info = scope.code.scope_info_for(lambda_table)
+        closure = {name: scope.capture_cell(name) for name in lambda_scope_info.frees}
+        return UserFunction(
+            interpreter=self,
+            node=node,
+            code=scope.code,
+            globals_dict=scope.globals,
+            builtins_dict=scope.builtins,
+            scope_info=lambda_scope_info,
+            closure=closure,
+            defaults=defaults,
+            kw_defaults=kw_defaults,
+            is_generator=False,
+            qualname=self._qualname_for_definition("<lambda>", scope),
+        )
+
     def eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Any:
         func = self.eval_expr(node.func, scope)
         args: list[Any] = []
@@ -133,16 +220,38 @@ class ExpressionMixin:
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
-        return func(*args, **kwargs)
+        if kwargs:
+            result = func(*args, **kwargs)
+        else:
+            result = func(*args)
+        return self._maybe_fix_typing_runtime_module(func, result, scope)
 
     def eval_List(self, node: ast.List, scope: RuntimeScope) -> list:
-        return [self.eval_expr(e, scope) for e in node.elts]
+        out: list[Any] = []
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.extend(self.eval_expr(elt.value, scope))
+            else:
+                out.append(self.eval_expr(elt, scope))
+        return out
 
     def eval_Tuple(self, node: ast.Tuple, scope: RuntimeScope) -> tuple:
-        return tuple(self.eval_expr(e, scope) for e in node.elts)
+        out: list[Any] = []
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.extend(self.eval_expr(elt.value, scope))
+            else:
+                out.append(self.eval_expr(elt, scope))
+        return tuple(out)
 
     def eval_Set(self, node: ast.Set, scope: RuntimeScope) -> set:
-        return {self.eval_expr(e, scope) for e in node.elts}
+        out: set[Any] = set()
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.update(self.eval_expr(elt.value, scope))
+            else:
+                out.add(self.eval_expr(elt, scope))
+        return out
 
     def eval_Dict(self, node: ast.Dict, scope: RuntimeScope) -> dict:
         d: Dict[Any, Any] = {}
@@ -193,6 +302,22 @@ class ExpressionMixin:
 
     def eval_JoinedStr(self, node: ast.JoinedStr, scope: RuntimeScope) -> str:
         return "".join(str(self.eval_expr(part, scope)) for part in node.values)
+
+    def eval_Interpolation(self, node: ast.AST, scope: RuntimeScope) -> Any:
+        value = self.eval_expr(node.value, scope)
+        format_spec = "" if node.format_spec is None else str(self.eval_expr(node.format_spec, scope))
+        return self._build_template_interpolation(
+            value,
+            getattr(node, "str", ""),
+            node.conversion,
+            format_spec,
+        )
+
+    def eval_TemplateStr(self, node: ast.AST, scope: RuntimeScope) -> Any:
+        if TemplateString is None:
+            raise NotImplementedError("TemplateStr is not supported on this Python runtime")
+        parts = [self.eval_expr(part, scope) for part in node.values]
+        return TemplateString(*parts)
 
     # ---- comprehensions (normal) ----
 
@@ -327,6 +452,9 @@ class ExpressionMixin:
 
         return gen()
 
+    def eval_Await(self, node: ast.Await, scope: RuntimeScope) -> Any:
+        raise SyntaxError("'await' is only valid in async functions")
+
     def eval_Yield(self, node: ast.Yield, scope: RuntimeScope) -> Any:
         raise SyntaxError("yield outside generator execution path (internal error)")
 
@@ -396,6 +524,39 @@ class ExpressionMixin:
             return (yield from self.g_eval_expr(node.body, scope))
         return (yield from self.g_eval_expr(node.orelse, scope))
 
+    def g_eval_NamedExpr(self, node: ast.NamedExpr, scope: RuntimeScope) -> Iterator[Any]:
+        value = yield from self.g_eval_expr(node.value, scope)
+        self._store_namedexpr_target(node.target, value, scope)
+        return value
+
+    def g_eval_Lambda(self, node: ast.Lambda, scope: RuntimeScope) -> Iterator[UserFunction]:
+        defaults: list[Any] = []
+        for default_node in node.args.defaults or []:
+            defaults.append((yield from self.g_eval_expr(default_node, scope)))
+        kw_defaults: list[Any] = []
+        for default_node in getattr(node.args, "kw_defaults", []) or []:
+            kw_defaults.append(
+                (yield from self.g_eval_expr(default_node, scope))
+                if default_node is not None
+                else NO_DEFAULT
+            )
+        lambda_table = scope.code.lookup_lambda_table(node)
+        lambda_scope_info = scope.code.scope_info_for(lambda_table)
+        closure = {name: scope.capture_cell(name) for name in lambda_scope_info.frees}
+        return UserFunction(
+            interpreter=self,
+            node=node,
+            code=scope.code,
+            globals_dict=scope.globals,
+            builtins_dict=scope.builtins,
+            scope_info=lambda_scope_info,
+            closure=closure,
+            defaults=defaults,
+            kw_defaults=kw_defaults,
+            is_generator=False,
+            qualname=self._qualname_for_definition("<lambda>", scope),
+        )
+
     def g_eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Iterator[Any]:
         func = yield from self.g_eval_expr(node.func, scope)
         args: list[Any] = []
@@ -415,24 +576,37 @@ class ExpressionMixin:
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
-        return func(*args, **kwargs)
+        if kwargs:
+            result = func(*args, **kwargs)
+        else:
+            result = func(*args)
+        return self._maybe_fix_typing_runtime_module(func, result, scope)
 
     def g_eval_List(self, node: ast.List, scope: RuntimeScope) -> Iterator[list]:
         out = []
-        for e in node.elts:
-            out.append((yield from self.g_eval_expr(e, scope)))
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.extend((yield from self.g_eval_expr(elt.value, scope)))
+            else:
+                out.append((yield from self.g_eval_expr(elt, scope)))
         return out
 
     def g_eval_Tuple(self, node: ast.Tuple, scope: RuntimeScope) -> Iterator[tuple]:
         out = []
-        for e in node.elts:
-            out.append((yield from self.g_eval_expr(e, scope)))
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.extend((yield from self.g_eval_expr(elt.value, scope)))
+            else:
+                out.append((yield from self.g_eval_expr(elt, scope)))
         return tuple(out)
 
     def g_eval_Set(self, node: ast.Set, scope: RuntimeScope) -> Iterator[set]:
         out = set()
-        for e in node.elts:
-            out.add((yield from self.g_eval_expr(e, scope)))
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                out.update((yield from self.g_eval_expr(elt.value, scope)))
+            else:
+                out.add((yield from self.g_eval_expr(elt, scope)))
         return out
 
     def g_eval_Dict(self, node: ast.Dict, scope: RuntimeScope) -> Iterator[dict]:
@@ -485,7 +659,57 @@ class ExpressionMixin:
             parts.append(str((yield from self.g_eval_expr(part, scope))))
         return "".join(parts)
 
+    def g_eval_Interpolation(self, node: ast.AST, scope: RuntimeScope) -> Iterator[Any]:
+        value = yield from self.g_eval_expr(node.value, scope)
+        format_spec = (
+            "" if node.format_spec is None else str((yield from self.g_eval_expr(node.format_spec, scope)))
+        )
+        return self._build_template_interpolation(
+            value,
+            getattr(node, "str", ""),
+            node.conversion,
+            format_spec,
+        )
+
+    def g_eval_TemplateStr(self, node: ast.AST, scope: RuntimeScope) -> Iterator[Any]:
+        if TemplateString is None:
+            raise NotImplementedError("TemplateStr is not supported on this Python runtime")
+        parts = []
+        for part in node.values:
+            parts.append((yield from self.g_eval_expr(part, scope)))
+        return TemplateString(*parts)
+
     # comprehensions (generator-mode)
+    def _g_for_each_comprehension_item(
+        self,
+        gen: ast.comprehension,
+        iterable: Any,
+        on_item: Callable[[Any], Iterator[Any]],
+    ) -> Iterator[Any]:
+        if not getattr(gen, "is_async", False):
+            for item in iterable:
+                yield from on_item(item)
+            return
+
+        iterator = self._async_for_iter(iterable)
+        while True:
+            try:
+                next_awaitable, raw_next, invalid_message = self._async_for_next_awaitable(iterator)
+            except StopAsyncIteration:
+                break
+
+            try:
+                item = yield AwaitRequest(next_awaitable)
+            except StopAsyncIteration:
+                break
+            except BaseException as exc:
+                # Keep coroutine exceptions intact but wrap invalid custom awaitables.
+                if not (hasattr(raw_next, "send") and hasattr(raw_next, "throw")):
+                    raise TypeError(invalid_message) from exc
+                raise
+
+            yield from on_item(item)
+
     def g_eval_ListComp(self, node: ast.ListComp, scope: RuntimeScope) -> Iterator[list]:
         locals_set = _collect_comprehension_locals(node.generators)
         comp_scope = ComprehensionScope(
@@ -494,9 +718,6 @@ class ExpressionMixin:
 
         out: list = []
         gens = node.generators
-        if any(getattr(g, "is_async", False) for g in gens):
-            raise NotImplementedError("async comprehensions not supported")
-
         outer_iter = yield from self.g_eval_expr(gens[0].iter, scope)
 
         def rec(i: int) -> Iterator[Any]:
@@ -506,7 +727,8 @@ class ExpressionMixin:
                 return
             g = gens[i]
             it = outer_iter if i == 0 else (yield from self.g_eval_expr(g.iter, comp_scope))
-            for item in it:
+
+            def on_item(item: Any) -> Iterator[Any]:
                 yield from self.g_assign_target(g.target, item, comp_scope)
                 ok = True
                 for if_ in g.ifs:
@@ -516,6 +738,8 @@ class ExpressionMixin:
                         break
                 if ok:
                     yield from rec(i + 1)
+
+            yield from self._g_for_each_comprehension_item(g, it, on_item)
 
         yield from rec(0)
         return out
@@ -528,9 +752,6 @@ class ExpressionMixin:
 
         out: set = set()
         gens = node.generators
-        if any(getattr(g, "is_async", False) for g in gens):
-            raise NotImplementedError("async comprehensions not supported")
-
         outer_iter = yield from self.g_eval_expr(gens[0].iter, scope)
 
         def rec(i: int) -> Iterator[Any]:
@@ -540,7 +761,8 @@ class ExpressionMixin:
                 return
             g = gens[i]
             it = outer_iter if i == 0 else (yield from self.g_eval_expr(g.iter, comp_scope))
-            for item in it:
+
+            def on_item(item: Any) -> Iterator[Any]:
                 yield from self.g_assign_target(g.target, item, comp_scope)
                 ok = True
                 for if_ in g.ifs:
@@ -550,6 +772,8 @@ class ExpressionMixin:
                         break
                 if ok:
                     yield from rec(i + 1)
+
+            yield from self._g_for_each_comprehension_item(g, it, on_item)
 
         yield from rec(0)
         return out
@@ -562,9 +786,6 @@ class ExpressionMixin:
 
         out: dict = {}
         gens = node.generators
-        if any(getattr(g, "is_async", False) for g in gens):
-            raise NotImplementedError("async comprehensions not supported")
-
         outer_iter = yield from self.g_eval_expr(gens[0].iter, scope)
 
         def rec(i: int) -> Iterator[Any]:
@@ -575,7 +796,8 @@ class ExpressionMixin:
                 return
             g = gens[i]
             it = outer_iter if i == 0 else (yield from self.g_eval_expr(g.iter, comp_scope))
-            for item in it:
+
+            def on_item(item: Any) -> Iterator[Any]:
                 yield from self.g_assign_target(g.target, item, comp_scope)
                 ok = True
                 for if_ in g.ifs:
@@ -586,18 +808,81 @@ class ExpressionMixin:
                 if ok:
                     yield from rec(i + 1)
 
+            yield from self._g_for_each_comprehension_item(g, it, on_item)
+
         yield from rec(0)
         return out
 
+    def _expr_requires_await_during_eval(self, expr: ast.AST | None) -> bool:
+        if expr is None:
+            return False
+        if isinstance(expr, ast.Await):
+            return True
+        if isinstance(expr, (ast.ListComp, ast.SetComp, ast.DictComp)):
+            if any(getattr(gen, "is_async", False) for gen in expr.generators):
+                return True
+        # Nested generator expressions don't consume async iterators at creation
+        # time, so they don't force the containing generator expression to become
+        # an async iterator.
+        if isinstance(expr, ast.GeneratorExp):
+            return False
+        return any(
+            self._expr_requires_await_during_eval(child) for child in ast.iter_child_nodes(expr)
+        )
+
+    def _generator_exp_requires_async_iterator(self, node: ast.GeneratorExp) -> bool:
+        if any(getattr(gen, "is_async", False) for gen in node.generators):
+            return True
+        if self._expr_requires_await_during_eval(node.elt):
+            return True
+        for gen in node.generators:
+            if self._expr_requires_await_during_eval(gen.iter):
+                return True
+            for condition in gen.ifs:
+                if self._expr_requires_await_during_eval(condition):
+                    return True
+        return False
+
     def g_eval_GeneratorExp(
         self, node: ast.GeneratorExp, scope: RuntimeScope
-    ) -> Iterator[Iterator[Any]]:
+    ) -> Iterator[Any]:
         locals_set = _collect_comprehension_locals(node.generators)
         gens = node.generators
-        if any(getattr(g, "is_async", False) for g in gens):
-            raise NotImplementedError("async comprehensions not supported")
+        has_async = self._generator_exp_requires_async_iterator(node)
 
         outer_iter = yield from self.g_eval_expr(gens[0].iter, scope)
+
+        if has_async:
+
+            def make_async_gen() -> Iterator[Any]:
+                comp_scope = ComprehensionScope(
+                    scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+                )
+
+                def rec(i: int) -> Iterator[Any]:
+                    if i == len(gens):
+                        val = yield from self.g_eval_expr(node.elt, comp_scope)
+                        yield val
+                        return
+                    g = gens[i]
+                    it = outer_iter if i == 0 else (yield from self.g_eval_expr(g.iter, comp_scope))
+
+                    def on_item(item: Any) -> Iterator[Any]:
+                        yield from self.g_assign_target(g.target, item, comp_scope)
+                        ok = True
+                        for if_ in g.ifs:
+                            cond = yield from self.g_eval_expr(if_, comp_scope)
+                            if not cond:
+                                ok = False
+                                break
+                        if ok:
+                            yield from rec(i + 1)
+
+                    yield from self._g_for_each_comprehension_item(g, it, on_item)
+
+                yield from rec(0)
+
+            return InterpretedAsyncGenerator(make_async_gen())
 
         def make_gen() -> Iterator[Any]:
             comp_scope = ComprehensionScope(
@@ -627,6 +912,15 @@ class ExpressionMixin:
         return make_gen()
 
     # yield / yield from
+    def g_eval_Await(self, node: ast.Await, scope: RuntimeScope) -> Iterator[Any]:
+        awaitable = yield from self.g_eval_expr(node.value, scope)
+        if not hasattr(awaitable, "__await__"):
+            raise TypeError(
+                f"object {type(awaitable).__name__} can't be used in 'await' expression"
+            )
+        result = yield AwaitRequest(awaitable)
+        return result
+
     def g_eval_Yield(self, node: ast.Yield, scope: RuntimeScope) -> Iterator[Any]:
         if node.value is None:
             sent = yield None
