@@ -87,6 +87,28 @@ fn()
         run_interpreter(source)
 
 
+def test_user_function_call_binding_survives_builtin_len_rebind(run_interpreter):
+    source = """
+def foo():
+    return len([1, 2, 3])
+
+def fake_len(_value):
+    return 7
+"""
+    env = run_interpreter(source)
+    foo = env["foo"]
+    fake_len = env["fake_len"]
+
+    assert foo() == 3
+    original_len = builtins.len
+    try:
+        builtins.len = fake_len
+        rebound_result = foo()
+    finally:
+        builtins.len = original_len
+    assert rebound_result == 3
+
+
 def test_namedexpr_assigns_and_returns_value(run_interpreter):
     source = """
 total = (value := 40) + 2

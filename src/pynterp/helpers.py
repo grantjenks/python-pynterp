@@ -9,6 +9,14 @@ from .functions import UserFunction
 from .lib.guards import safe_delattr, safe_getattr, safe_setattr
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, RuntimeScope
 
+_PY_ANY = any
+_PY_HASATTR = hasattr
+_PY_ISINSTANCE = isinstance
+_PY_LEN = len
+_PY_NEXT = next
+_PY_TUPLE = tuple
+_PY_ZIP = zip
+
 
 class InterpretedAsyncGenerator:
     def __init__(self, body_runner: Iterator[Any]):
@@ -468,28 +476,28 @@ class HelperMixin:
 
         default_map: Dict[str, Any] = {}
         if func_obj.defaults:
-            for name, val in zip(params[-len(func_obj.defaults) :], func_obj.defaults):
+            for name, val in _PY_ZIP(params[-_PY_LEN(func_obj.defaults) :], func_obj.defaults):
                 default_map[name] = val
 
         # positional binding
-        if len(args) > len(params) and node.args.vararg is None:
+        if _PY_LEN(args) > _PY_LEN(params) and node.args.vararg is None:
             raise TypeError(
-                f"{func_name}() takes {len(params)} positional args but {len(args)} were given"
+                f"{func_name}() takes {_PY_LEN(params)} positional args but {_PY_LEN(args)} were given"
             )
 
-        for name, val in zip(params, args):
+        for name, val in _PY_ZIP(params, args):
             call_scope.store(name, val)
 
-        extra_pos = args[len(params) :]
+        extra_pos = args[_PY_LEN(params) :]
         if extra_pos:
             if node.args.vararg is None:
                 raise TypeError("varargs not supported")
-            call_scope.store(node.args.vararg.arg, tuple(extra_pos))
+            call_scope.store(node.args.vararg.arg, _PY_TUPLE(extra_pos))
 
         # keyword binding
         for k, v in kwargs.items():
             if k in params or k in kwonly_names:
-                if any(k == a.arg for a in posonly):
+                if _PY_ANY(k == a.arg for a in posonly):
                     raise TypeError(
                         f"{func_name}() got positional-only arg '{k}' passed as keyword"
                     )
@@ -515,7 +523,7 @@ class HelperMixin:
 
         # kw-only
         if kwonlyargs:
-            for arg_node, default_val in zip(kwonlyargs, func_obj.kw_defaults):
+            for arg_node, default_val in _PY_ZIP(kwonlyargs, func_obj.kw_defaults):
                 name = arg_node.arg
                 if not is_bound(name):
                     if default_val is not NO_DEFAULT:
@@ -531,7 +539,7 @@ class HelperMixin:
         if node.args.kwarg is not None and not is_bound(node.args.kwarg.arg):
             call_scope.store(node.args.kwarg.arg, {})
 
-        if not hasattr(self, "_call_stack"):
+        if not _PY_HASATTR(self, "_call_stack"):
             self._call_stack = []
         frame = (func_obj, call_scope)
 
@@ -555,14 +563,14 @@ class HelperMixin:
                 try:
                     body_runner = self.g_exec_block(node.body, call_scope)
                     try:
-                        yielded = next(body_runner)
+                        yielded = _PY_NEXT(body_runner)
                     except StopIteration:
                         return None
                     except ReturnSignal as r:
                         return r.value
 
                     while True:
-                        if not isinstance(yielded, AwaitRequest):
+                        if not _PY_ISINSTANCE(yielded, AwaitRequest):
                             raise RuntimeError("internal error: unexpected async function yield value")
                         try:
                             resume = await yielded.awaitable
@@ -590,7 +598,7 @@ class HelperMixin:
             self._call_stack.append(frame)
             try:
                 try:
-                    if isinstance(node, ast.Lambda):
+                    if _PY_ISINSTANCE(node, ast.Lambda):
                         return self.eval_expr(node.body, call_scope)
                     self.exec_block(node.body, call_scope)
                 except ReturnSignal as r:
