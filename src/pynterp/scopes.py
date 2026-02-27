@@ -5,6 +5,8 @@ from typing import Any, Dict, Set
 from .code import ModuleCode, ScopeInfo
 from .common import UNBOUND, Cell
 
+_MISSING = object()
+
 
 class RuntimeScope:
     def __init__(
@@ -251,15 +253,32 @@ class ClassBodyScope(RuntimeScope):
         self.type_param_cells = dict(type_param_cells or {})
         self._shadowed_type_param_names: Set[str] = set()
 
+    def _load_type_param(self, name: str, *, honor_shadowing: bool) -> Any:
+        if honor_shadowing and name in self._shadowed_type_param_names:
+            return _MISSING
+        type_param_cell = self.type_param_cells.get(name)
+        if type_param_cell is None:
+            return _MISSING
+        if type_param_cell.value is UNBOUND:
+            raise NameError(name)
+        return type_param_cell.value
+
+    def _load_from_enclosing(self, name: str) -> Any:
+        value = self._load_type_param(name, honor_shadowing=False)
+        if value is not _MISSING:
+            return value
+        if isinstance(self.outer_scope, ClassBodyScope):
+            return self.outer_scope._load_from_enclosing(name)
+        return self.outer_scope.load(name)
+
     def load(self, name: str) -> Any:
         if name in self.class_ns:
             return self.class_ns[name]
-        if name not in self._shadowed_type_param_names:
-            type_param_cell = self.type_param_cells.get(name)
-            if type_param_cell is not None:
-                if type_param_cell.value is UNBOUND:
-                    raise NameError(name)
-                return type_param_cell.value
+        value = self._load_type_param(name, honor_shadowing=True)
+        if value is not _MISSING:
+            return value
+        if isinstance(self.outer_scope, ClassBodyScope):
+            return self.outer_scope._load_from_enclosing(name)
         return self.outer_scope.load(name)
 
     def store(self, name: str, value: Any) -> Any:

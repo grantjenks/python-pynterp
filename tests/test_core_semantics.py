@@ -515,6 +515,38 @@ RESULT = (
     assert env["RESULT"] == (True, True)
 
 
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_nested_class_body_skips_outer_class_locals_for_name_loads(run_interpreter):
+    source = """
+def f():
+    T = str
+    class C:
+        T = int
+        class D[U](T):
+            marker = T
+    return C
+
+C = f()
+RESULT = (C.D.__bases__[0] is int, C.D.marker is str)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True)
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_nested_class_body_prefers_outer_type_params_over_shadowed_class_name(run_interpreter):
+    source = """
+class Outer[T]:
+    T = "class"
+    class Inner:
+        marker = T
+
+RESULT = Outer.Inner.marker is Outer.__type_params__[0]
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] is True
+
+
 def test_async_function_def_returns_coroutine(run_interpreter):
     source = """
 async def add(x, y=3):
