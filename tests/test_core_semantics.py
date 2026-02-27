@@ -2035,6 +2035,43 @@ RESULT = (
     assert env["RESULT"] == ("importlib", "importlib.metadata", True, True, False)
 
 
+def test_user_function_exposes_inspect_signature_with_full_parameter_kinds(run_interpreter):
+    source = """
+def sample(a, /, b, c=3, *args, d, e=5, **kwargs):
+    return (a, b, c, args, d, e, kwargs)
+
+fn = lambda x, y=2, *, z=3: (x, y, z)
+
+RESULT = (str(sample.__signature__), str(fn.__signature__))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (
+        "(a, /, b, c=3, *args, d, e=5, **kwargs)",
+        "(x, y=2, *, z=3)",
+    )
+
+
+def test_xmlrpc_server_html_doc_handles_user_function_lambda_signature():
+    import xmlrpc.server
+
+    source = """
+fn = lambda: 1
+signature_text = str(fn.__signature__)
+doc = XMLRPC_DOC.docroutine(fn, "fn")
+RESULT = (signature_text, "()</dt>" in doc)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<xmlrpc_user_function_signature>",
+        "__builtins__": dict(builtins.__dict__),
+        "XMLRPC_DOC": xmlrpc.server.ServerHTMLDoc(),
+    }
+    interpreter.run(source, env=env, filename="<xmlrpc_user_function_signature>")
+    assert env["RESULT"] == ("()", True)
+
+
 def test_asyncio_format_helpers_resolves_user_function_source():
     source = (
         "from asyncio import format_helpers\n\n"

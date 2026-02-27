@@ -3,10 +3,11 @@ from __future__ import annotations
 import ast
 import copy
 import importlib
+import inspect
 from typing import TYPE_CHECKING, Any, Dict
 
 from .code import ModuleCode, ScopeInfo
-from .common import Cell
+from .common import NO_DEFAULT, Cell
 
 if TYPE_CHECKING:
     from .main import Interpreter
@@ -56,6 +57,71 @@ def _contains_non_none_return(fn_node: ast.FunctionDef) -> bool:
         if visitor.found:
             return True
     return False
+
+
+def _build_user_function_signature(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    defaults: list[Any],
+    kw_defaults: list[Any],
+    annotations: Dict[str, Any],
+) -> inspect.Signature:
+    args = node.args
+    parameters: list[inspect.Parameter] = []
+    empty = inspect.Parameter.empty
+
+    positional_args = list(getattr(args, "posonlyargs", []) or []) + list(getattr(args, "args", []) or [])
+    default_start = max(0, len(positional_args) - len(defaults))
+
+    for index, arg_node in enumerate(positional_args):
+        if index < len(getattr(args, "posonlyargs", []) or []):
+            kind = inspect.Parameter.POSITIONAL_ONLY
+        else:
+            kind = inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+        if index >= default_start:
+            default = defaults[index - default_start]
+        else:
+            default = empty
+
+        parameters.append(
+            inspect.Parameter(
+                arg_node.arg,
+                kind,
+                default=default,
+                annotation=annotations.get(arg_node.arg, empty),
+            )
+        )
+
+    if args.vararg is not None:
+        parameters.append(
+            inspect.Parameter(
+                args.vararg.arg,
+                inspect.Parameter.VAR_POSITIONAL,
+                annotation=annotations.get(args.vararg.arg, empty),
+            )
+        )
+
+    for index, arg_node in enumerate(args.kwonlyargs):
+        default = kw_defaults[index] if index < len(kw_defaults) else NO_DEFAULT
+        parameters.append(
+            inspect.Parameter(
+                arg_node.arg,
+                inspect.Parameter.KEYWORD_ONLY,
+                default=empty if default is NO_DEFAULT else default,
+                annotation=annotations.get(arg_node.arg, empty),
+            )
+        )
+
+    if args.kwarg is not None:
+        parameters.append(
+            inspect.Parameter(
+                args.kwarg.arg,
+                inspect.Parameter.VAR_KEYWORD,
+                annotation=annotations.get(args.kwarg.arg, empty),
+            )
+        )
+
+    return inspect.Signature(parameters, return_annotation=annotations.get("return", empty))
 
 
 def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:
@@ -147,6 +213,12 @@ class UserFunction:
         self.__module__ = globals_dict.get("__name__", "__main__")
         self.__annotations__ = dict(annotations) if annotations is not None else {}
         self.__type_params__ = tuple(type_params)
+        self.__signature__ = _build_user_function_signature(
+            node,
+            self.defaults,
+            self.kw_defaults,
+            self.__annotations__,
+        )
         self._private_owner = private_owner
 
     def __repr__(self) -> str:
