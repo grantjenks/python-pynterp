@@ -1069,6 +1069,25 @@ class StatementMixin:
         except TypeError:
             return False
 
+    def _split_try_star_pending(
+        self,
+        pending: py_builtins.BaseExceptionGroup,
+        exc_type: Any,
+    ) -> tuple[BaseException | None, BaseException | None]:
+        result = pending.split(exc_type)
+        if not isinstance(result, tuple):
+            raise TypeError(
+                f"{type(pending).__name__}.split must return a tuple, not {type(result).__name__}"
+            )
+        if len(result) < 2:
+            raise TypeError(
+                f"{type(pending).__name__}.split must return a 2-tuple, "
+                f"got tuple of size {len(result)}"
+            )
+        # Accept tuple lengths > 2 for compatibility with historical behavior.
+        matched, rest = result[0], result[1]
+        return matched, rest
+
     def _raise_try_star_result(
         self,
         *,
@@ -1187,7 +1206,7 @@ class StatementMixin:
                     raise TypeError(
                         "catching ExceptionGroup with except* is not allowed. Use except instead."
                     )
-                matched, pending = pending.split(exc_type)
+                matched, pending = self._split_try_star_pending(pending, exc_type)
                 if matched is None:
                     continue
 
@@ -1662,7 +1681,7 @@ class StatementMixin:
                     raise TypeError(
                         "catching ExceptionGroup with except* is not allowed. Use except instead."
                     )
-                matched, pending = pending.split(exc_type)
+                matched, pending = self._split_try_star_pending(pending, exc_type)
                 if matched is None:
                     continue
 

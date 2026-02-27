@@ -1864,6 +1864,57 @@ except* ExceptionGroup:
         run_interpreter(source)
 
 
+def test_trystar_validates_exception_group_split_contract(run_interpreter):
+    source = """
+class BadEG1(ExceptionGroup):
+    def split(self, *args):
+        return "NOT A 2-TUPLE!"
+
+class BadEG2(ExceptionGroup):
+    def split(self, *args):
+        return ("NOT A 2-TUPLE!",)
+
+RESULT = []
+for value in (
+    BadEG1("eg", [TypeError(1), ValueError(2)]),
+    BadEG2("eg", [TypeError(1), ValueError(2)]),
+):
+    try:
+        try:
+            raise value
+        except* ValueError:
+            pass
+        except* TypeError:
+            pass
+    except TypeError as exc:
+        RESULT.append((str(exc), type(exc.__context__).__name__))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == [
+        ("BadEG1.split must return a tuple, not str", "BadEG1"),
+        ("BadEG2.split must return a 2-tuple, got tuple of size 1", "BadEG2"),
+    ]
+
+
+def test_trystar_allows_exception_group_split_with_extra_tuple_members(run_interpreter):
+    source = """
+class WeirdEG(ExceptionGroup):
+    def split(self, *args):
+        return super().split(*args) + ("anything", 123456, None)
+
+try:
+    raise WeirdEG("eg", [TypeError(1), ValueError(2)])
+except* TypeError as exc:
+    TYPE_RESULT = [type(item).__name__ for item in exc.exceptions]
+except* ValueError as exc:
+    VALUE_RESULT = [type(item).__name__ for item in exc.exceptions]
+
+RESULT = (TYPE_RESULT, VALUE_RESULT)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (["TypeError"], ["ValueError"])
+
+
 def test_match_supports_common_pattern_forms(run_interpreter):
     source = """
 class Point:
