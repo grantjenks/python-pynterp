@@ -271,6 +271,9 @@ class UserFunction:
         self.is_generator = is_generator
         self.is_async = is_async
         self.is_async_generator = is_async_generator
+        if self.is_async and not self.is_async_generator:
+            if hasattr(inspect, "markcoroutinefunction"):
+                inspect.markcoroutinefunction(self)
         name = node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<lambda>"
         self.__name__ = name
         self.__qualname__ = qualname if qualname is not None else name

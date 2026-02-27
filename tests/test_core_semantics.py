@@ -908,6 +908,30 @@ CORO = add(4)
     assert exc_info.value.value == 7
 
 
+def test_async_user_function_is_detected_as_coroutinefunction() -> None:
+    source = """
+import inspect
+from asyncio import coroutines
+
+async def callback():
+    return 1
+
+RESULT = (
+    inspect.iscoroutinefunction(callback),
+    coroutines._iscoroutinefunction(callback),
+)
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<async_coro_marker>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<async_coro_marker>")
+    assert env["RESULT"] == (True, True)
+
+
 def test_await_expression_uses_custom_awaitable(run_interpreter):
     source = """
 class Ready:
