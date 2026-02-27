@@ -27,6 +27,17 @@ def _load_user_function_global(module_name: str, qualname: str) -> Any:
     return _resolve_qualname_attr(module, qualname)
 
 
+def _mangle_private_name_for_owner(name: str, private_owner: str | None) -> str:
+    if not private_owner or not isinstance(name, str):
+        return name
+    if not name.startswith("__") or name.endswith("__") or "." in name:
+        return name
+    owner = private_owner.lstrip("_")
+    if not owner:
+        return name
+    return f"_{owner}{name}"
+
+
 def _contains_non_none_return(fn_node: ast.FunctionDef) -> bool:
     class ReturnVisitor(ast.NodeVisitor):
         def __init__(self):
@@ -204,6 +215,15 @@ class UserFunction:
         self.closure = dict(closure)
         self.defaults = list(defaults)
         self.kw_defaults = list(kw_defaults)
+        self.__defaults__ = tuple(self.defaults) if self.defaults else None
+        kwonlyargs = list(getattr(node.args, "kwonlyargs", []) or [])
+        kwdefault_map: dict[str, Any] = {}
+        for arg_node, default_value in zip(kwonlyargs, self.kw_defaults):
+            if default_value is NO_DEFAULT:
+                continue
+            name = _mangle_private_name_for_owner(arg_node.arg, private_owner)
+            kwdefault_map[name] = default_value
+        self.__kwdefaults__ = kwdefault_map or None
         self.is_generator = is_generator
         self.is_async = is_async
         self.is_async_generator = is_async_generator

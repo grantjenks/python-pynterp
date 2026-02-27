@@ -566,12 +566,20 @@ class HelperMixin:
         pos_or_kw = getattr(node.args, "args", []) or []
         kwonlyargs = getattr(node.args, "kwonlyargs", []) or []
         params_nodes = posonly + pos_or_kw
-        params = [a.arg for a in params_nodes]
-        kwonly_names = {a.arg for a in kwonlyargs}
+        params = [self._mangle_private_name(a.arg, call_scope) for a in params_nodes]
+        params_set = set(params)
+        posonly_names = {self._mangle_private_name(a.arg, call_scope) for a in posonly}
+        kwonly_names = {self._mangle_private_name(a.arg, call_scope) for a in kwonlyargs}
 
         default_map: Dict[str, Any] = {}
-        if func_obj.defaults:
-            for name, val in _PY_ZIP(params[-_PY_LEN(func_obj.defaults) :], func_obj.defaults):
+        defaults_obj = getattr(func_obj, "__defaults__", None)
+        defaults: tuple[Any, ...]
+        if defaults_obj is None:
+            defaults = ()
+        else:
+            defaults = _PY_TUPLE(defaults_obj)
+        if defaults:
+            for name, val in _PY_ZIP(params[-_PY_LEN(defaults) :], defaults):
                 default_map[name] = val
 
         # positional binding
@@ -590,12 +598,20 @@ class HelperMixin:
             call_scope.store(node.args.vararg.arg, _PY_TUPLE(extra_pos))
 
         # keyword binding
+        posonly_keywords: list[str] = []
         for k, v in kwargs.items():
-            if k in params or k in kwonly_names:
-                if _PY_ANY(k == a.arg for a in posonly):
-                    raise TypeError(
-                        f"{func_name}() got positional-only arg '{k}' passed as keyword"
-                    )
+            if k in posonly_names:
+                if node.args.kwarg is None:
+                    posonly_keywords.append(k)
+                    continue
+                kwarg_name = node.args.kwarg.arg
+                if not is_bound(kwarg_name):
+                    call_scope.store(kwarg_name, {})
+                d = call_scope.load(kwarg_name)
+                d[k] = v
+                continue
+
+            if k in params_set or k in kwonly_names:
                 if is_bound(k):
                     raise TypeError(f"{func_name}() got multiple values for argument '{k}'")
                 call_scope.store(k, v)
@@ -608,6 +624,13 @@ class HelperMixin:
                 d = call_scope.load(kwarg_name)
                 d[k] = v
 
+        if posonly_keywords:
+            joined = ", ".join(posonly_keywords)
+            raise TypeError(
+                f"{func_name}() got some positional-only arguments passed as "
+                f"keyword arguments: '{joined}'"
+            )
+
         # fill required + defaults
         for name in params:
             if not is_bound(name):
@@ -617,9 +640,16 @@ class HelperMixin:
                     raise TypeError(f"{func_name}() missing required argument '{name}'")
 
         # kw-only
+        kwdefaults = getattr(func_obj, "__kwdefaults__", None)
+        if kwdefaults is None:
+            kwdefault_map: dict[str, Any] = {}
+        else:
+            kwdefault_map = dict(kwdefaults)
         if kwonlyargs:
             for arg_node, default_val in _PY_ZIP(kwonlyargs, func_obj.kw_defaults):
-                name = arg_node.arg
+                name = self._mangle_private_name(arg_node.arg, call_scope)
+                if name in kwdefault_map:
+                    default_val = kwdefault_map[name]
                 if not is_bound(name):
                     if default_val is not NO_DEFAULT:
                         call_scope.store(name, default_val)

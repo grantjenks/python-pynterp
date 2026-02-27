@@ -87,6 +87,39 @@ fn()
         run_interpreter(source)
 
 
+def test_user_function_defaults_attributes_drive_call_binding(run_interpreter):
+    source = """
+def f(a, b=2, /, c=3, *, d=4):
+    return (a, b, c, d)
+
+BEFORE = (f.__defaults__, f.__kwdefaults__)
+f.__defaults__ = (10, 20, 30)
+f.__kwdefaults__ = {"d": 40}
+AFTER = (f.__defaults__, f.__kwdefaults__)
+RESULT = (f(), f(1), f(1, 2), f(1, 2, 3))
+"""
+    env = run_interpreter(source)
+    assert env["BEFORE"] == ((2, 3), {"d": 4})
+    assert env["AFTER"] == ((10, 20, 30), {"d": 40})
+    assert env["RESULT"] == (
+        (10, 20, 30, 40),
+        (1, 20, 30, 40),
+        (1, 2, 30, 40),
+        (1, 2, 3, 40),
+    )
+
+
+def test_positional_only_name_can_flow_into_kwargs_mapping(run_interpreter):
+    source = """
+def f(something, /, **kwargs):
+    return (something, kwargs)
+
+RESULT = (f(42, something=99), f(42))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ((42, {"something": 99}), (42, {}))
+
+
 def test_user_function_call_binding_survives_builtin_len_rebind(run_interpreter):
     source = """
 def foo():
