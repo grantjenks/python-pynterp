@@ -375,6 +375,30 @@ def test_default_unsupported_patterns_include_dunder_code() -> None:
     assert r"\b__code__\b" in probe.DEFAULT_UNSUPPORTED_PATTERNS
 
 
+def test_resolve_case_timeout_applies_slow_module_override(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    case_path = cpython_root / "Lib" / "test" / "test_zipfile64.py"
+    timeout = probe.resolve_case_timeout(
+        case_path=case_path,
+        cpython_root=cpython_root,
+        default_timeout=10,
+    )
+    assert timeout == 90
+
+
+def test_resolve_case_timeout_keeps_default_for_non_overridden_modules(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    case_path = cpython_root / "Lib" / "test" / "test_sched.py"
+    timeout = probe.resolve_case_timeout(
+        case_path=case_path,
+        cpython_root=cpython_root,
+        default_timeout=10,
+    )
+    assert timeout == 10
+
+
 def test_classify_applicability_excludes_dunder_code_by_default(tmp_path: Path) -> None:
     probe = load_probe_module()
     cpython_root = tmp_path / "cpython"

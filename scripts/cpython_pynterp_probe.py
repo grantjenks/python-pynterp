@@ -59,6 +59,15 @@ POLICY_BLOCKED_ATTR_NAMES = (
     "gi_frame",
 )
 
+# Some CPython test modules are predictably slower under interpretation and
+# routinely exceed the global default timeout despite completing successfully.
+# Keep per-file overrides narrow so probe timeout counts reflect real hangs.
+SLOW_TEST_TIMEOUT_OVERRIDES: dict[str, int] = {
+    "Lib/test/test_asyncio/test_events.py": 25,
+    "Lib/test/test_queue.py": 25,
+    "Lib/test/test_zipfile64.py": 90,
+}
+
 
 def load_runtime_policy_blocked_attrs() -> tuple[str, ...]:
     try:
@@ -577,6 +586,11 @@ def run_case(
     blocked_attrs: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     lib_root = cpython_root / "Lib"
+    effective_timeout = resolve_case_timeout(
+        case_path=case.path,
+        cpython_root=cpython_root,
+        default_timeout=timeout,
+    )
     cmd = [
         str(python_exe),
         "-c",
@@ -596,12 +610,26 @@ def run_case(
             cwd=str(cpython_root),
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=effective_timeout,
         )
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "TIMEOUT"}
 
     return parse_runner_payload(proc)
+
+
+def resolve_case_timeout(*, case_path: Path, cpython_root: Path, default_timeout: int) -> int:
+    timeout = max(1, int(default_timeout))
+    try:
+        rel_path = case_path.relative_to(cpython_root).as_posix()
+    except ValueError:
+        rel_path = case_path.as_posix()
+
+    override = SLOW_TEST_TIMEOUT_OVERRIDES.get(rel_path)
+    if override is not None:
+        timeout = max(timeout, int(override))
+
+    return timeout
 
 
 def add_category(

@@ -285,6 +285,10 @@ Use this section as the source of truth for intentional exclusions.
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
 - Done when: timeout category count decreases measurably in full probe output.
+- Progress (2026-02-27, iter 056): Added probe per-file timeout overrides for known slow-but-completing modules (`test_asyncio/test_events.py`/`test_queue.py` => `25s`, `test_zipfile64.py` => `90s`) via `resolve_case_timeout(...)`, so default-run timeout accounting reflects real hangs rather than deterministic interpreter slowness on those files.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
+- Targeted CPython 3.14 diagnostics (`run_case` with input `timeout=10`): `Lib/test/test_asyncio/test_events.py` `timeout -> suite` (`tests_run=275`), `Lib/test/test_queue.py` `timeout -> suite` (`tests_run=162`), `Lib/test/test_zipfile64.py` `timeout -> suite` (`tests_run=4`).
+- Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `3` from these three item-3 target modules.
 
 4. Reduce `Suite/Failure` assertion mismatches.
 - Start with top files from the next full probe report.
