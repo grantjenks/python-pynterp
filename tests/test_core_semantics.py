@@ -231,6 +231,30 @@ RESULT = run()
     assert env["RESULT"] == [12]
 
 
+def test_exec_with_explicit_globals_locals_uses_runtime_annotation_thunk() -> None:
+    source = """
+def run():
+    gns = {}
+    lns = {}
+    exec("'docstring'\\n"
+         "x: int = 5\\n", gns, lns)
+    keys = ("__annotate__" in gns, "__annotate__" in lns, "__annotations__" in lns)
+    gns.update(lns)  # __annotate__ resolves names from globals.
+    return keys, lns["__annotate__"](1), lns["x"]
+
+RESULT = run()
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<test_exec_builtin_explicit_namespaces>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<test_exec_builtin_explicit_namespaces>")
+    assert env["RESULT"] == ((False, True, False), {"x": int}, 5)
+
+
 def test_eval_builtin_uses_interpreted_function_scope_locals() -> None:
     source = """
 def run():

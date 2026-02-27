@@ -129,22 +129,43 @@ class ExpressionMixin:
             return dict(scope.locals)
         return scope.globals
 
+    def _compile_exec_eval_source(self, source: Any, mode: str) -> Any:
+        if not isinstance(source, (str, bytes, bytearray)):
+            return source
+        # Avoid inheriting host-module future flags (for example, future annotations)
+        # when interpreted code calls eval()/exec() with source text.
+        return builtins.compile(source, "<string>", mode, dont_inherit=True)
+
     def _maybe_special_builtin_call(
         self, func: Any, args: list[Any], kwargs: Dict[str, Any], scope: RuntimeScope
     ) -> Any:
         if func is builtins.eval:
+            if not args:
+                return _NO_SPECIAL_CALL
+            eval_source = self._compile_exec_eval_source(args[0], "eval")
             if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
-                return builtins.eval(args[0], scope.globals, self._default_exec_eval_locals(scope))
+                return builtins.eval(eval_source, scope.globals, self._default_exec_eval_locals(scope))
+            if eval_source is not args[0]:
+                return builtins.eval(eval_source, *args[1:], **kwargs)
             return _NO_SPECIAL_CALL
 
         if func is builtins.exec:
+            if not args:
+                return _NO_SPECIAL_CALL
+            source_is_text = isinstance(args[0], (str, bytes, bytearray))
             if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
+                if source_is_text and "closure" in kwargs:
+                    return _NO_SPECIAL_CALL
+                exec_source = self._compile_exec_eval_source(args[0], "exec")
                 return builtins.exec(
-                    args[0],
+                    exec_source,
                     scope.globals,
                     self._default_exec_eval_locals(scope),
                     **kwargs,
                 )
+            if source_is_text and "closure" not in kwargs:
+                exec_source = self._compile_exec_eval_source(args[0], "exec")
+                return builtins.exec(exec_source, *args[1:], **kwargs)
             return _NO_SPECIAL_CALL
 
         return _NO_SPECIAL_CALL
