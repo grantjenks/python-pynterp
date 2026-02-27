@@ -7,7 +7,7 @@
 - Probe baseline source: CPython `origin/3.14` (`a58ea8c2123`)
 - Probe command: `scripts/cpython_pynterp_probe.py --basis tests --mode module`
 - Default unsupported filters: `__import__`, `__dict__`, `__code__`
-- Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter057.json`
+- Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter059.json`
 
 ## Compatibility Snapshot
 
@@ -23,16 +23,16 @@
 
 ### Latest full probe result recorded
 
-From full module/tests probe run on `2026-02-27` (`/tmp/pynterp-probe-tests-module-20260227-iter057.json`):
+From full module/tests probe run on `2026-02-27` (`/tmp/pynterp-probe-tests-module-20260227-iter059.json`):
 
 - applicable files: `501 / 762` (`65.75%`)
-- estimated individual tests: `15,823` (`+137` vs `iter001`)
-- pass: `13,362` (`+697` vs `iter001`)
-- skip: `1,371` (`+66` vs `iter001`)
-- fail: `1,090` (`-626` vs `iter001`)
-- pass+skip rate: `93.11%` (`+4.05pp` vs `iter001`)
-- top fail categories: `TIMEOUT (478)`, `ModuleNotFound/'_tkinter' (470)`, `Suite/Failure (106)`, `NameError (30)`, `Suite/Error (15)`
-- top suite-error signatures: `AttributeError: 'generator' object has no attribute 'ag_code'. Did you mean: 'gi_code'? (12)`, `+------------------------------------ (2)`, `FileExistsError: [Errno 17] File exists: '.../lib/python3.14/encodings' (1)`
+- estimated individual tests: `15,829` (`+143` vs `iter001`)
+- pass: `13,339` (`+674` vs `iter001`)
+- skip: `1,364` (`+59` vs `iter001`)
+- fail: `1,126` (`-590` vs `iter001`)
+- pass+skip rate: `92.89%` (`+3.83pp` vs `iter001`)
+- top fail categories: `TIMEOUT (516)`, `ModuleNotFound/'_tkinter' (470)`, `Suite/Failure (119)`, `NameError (30)`, `ModuleNotFound/'test_regrtest_b' (2)`
+- top suite-error signatures: `none` (supported `Suite/Error` category is `0`; `policy_blocked_suite_error=8`)
 
 ## Explicit Skip Policy
 
@@ -71,7 +71,7 @@ Use this section as the source of truth for intentional exclusions.
 - Done when: `TODO.md` snapshot is updated from a new full run (not targeted reruns), with top fail categories and top suite error signatures.
 - Progress (2026-02-27): Captured `/tmp/pynterp-probe-tests-module-20260227-iter001.json` and refreshed snapshot metrics/categories/signatures above.
 
-2. Reduce remaining `Suite/Error` bucket first.
+2. [done] Reduce remaining `Suite/Error` bucket first.
 - Done when: top 10 current suite-error signatures each show clear net reduction in a full probe rerun.
 - Progress (2026-02-27, iter 002): Added pickle reduction support for module-level `pynterp.functions.UserFunction` via `__module__` + `__reduce__/__reduce_ex__` global resolution.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "pickle"` => `2 passed` (new user-function pickle roundtrip regression included); `uv run pytest tests/test_core_semantics.py` => `64 passed, 3 skipped`.
@@ -290,6 +290,9 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_venv.py`): eliminated suite-error signature `FileExistsError: [Errno 17] File exists: '.../lib/python3.14/encodings'` (`1 -> 0`) while overall suite `errors` stayed `18` locally due unrelated macOS dylib subprocess aborts in this environment.
 - Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `1` from `Lib/test/test_venv.py` by removing the remaining non-policy `encodings` collision.
+- Progress (2026-02-27, iter 059): Re-ran the full module/tests probe (`/tmp/pynterp-probe-tests-module-20260227-iter059.json`) and confirmed supported `Suite/Error` reached `0` (`15 -> 0` vs `iter057`), with `top_suite_error_signatures=[]`; item 2 is complete.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
+- Full probe metrics delta vs `iter057`: estimated tests `+6` (`15,823 -> 15,829`), pass `-23` (`13,362 -> 13,339`), skip `-7` (`1,371 -> 1,364`), fail `+36` (`1,090 -> 1,126`), pass+skip `-0.22pp` (`93.11% -> 92.89%`), and supported `Suite/Error` `15 -> 0`.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
