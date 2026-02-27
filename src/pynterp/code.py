@@ -86,11 +86,21 @@ class ModuleCode:
         lambda_counts_by_line: Dict[int, int] = {}
 
         class Visitor(ast.NodeVisitor):
+            def _visit_lambda_default_exprs(self, node: ast.Lambda) -> None:
+                for default in node.args.defaults or []:
+                    self.visit(default)
+                for kw_default in getattr(node.args, "kw_defaults", []) or []:
+                    if kw_default is not None:
+                        self.visit(kw_default)
+
             def visit_Lambda(self, node: ast.Lambda) -> None:
+                # Match symtable ordering: lambda defaults are analyzed in the
+                # enclosing scope before the lambda scope itself is registered.
+                self._visit_lambda_default_exprs(node)
                 index = lambda_counts_by_line.get(node.lineno, 0)
                 lambda_counts_by_line[node.lineno] = index + 1
                 self_outer._lambda_occurrence_by_location[(node.lineno, node.col_offset)] = index
-                self.generic_visit(node)
+                self.visit(node.body)
 
         self_outer = self
         Visitor().visit(self.tree)

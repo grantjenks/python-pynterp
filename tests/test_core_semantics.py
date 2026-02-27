@@ -78,6 +78,15 @@ RESULT = (f(3), g(4))
     assert env["RESULT"] == (4, 8)
 
 
+def test_nested_same_line_lambdas_with_defaults_bind_correct_scope(run_interpreter):
+    source = """
+outer = lambda x = lambda y = lambda z=1 : z : y() : x()
+RESULT = outer()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == 1
+
+
 def test_lambda_missing_required_argument_name(run_interpreter):
     source = """
 fn = lambda value: value
