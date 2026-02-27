@@ -571,6 +571,71 @@ RESULT = Box[int]
     assert env["RESULT"] == ("Box", "int")
 
 
+def test_metaclass_prepare_namespace_object_is_used_for_class_body(run_interpreter):
+    source = """
+class PreparedNamespace(dict):
+    def __init__(self):
+        super().__init__()
+        self.assignment_order = []
+
+    def __setitem__(self, key, value):
+        self.assignment_order.append(key)
+        return super().__setitem__(key, value)
+
+class Meta(type):
+    @classmethod
+    def __prepare__(mcls, name, bases, **kwargs):
+        ns = PreparedNamespace()
+        ns.prepared_flag = "ok"
+        return ns
+
+    def __new__(mcls, name, bases, ns, **kwargs):
+        cls = super().__new__(mcls, name, bases, dict(ns), **kwargs)
+        cls.ns_type = type(ns).__name__
+        cls.prepared_flag = ns.prepared_flag
+        cls.assignment_order = tuple(ns.assignment_order)
+        return cls
+
+class C(metaclass=Meta):
+    VALUE = 42
+
+RESULT = (
+    C.ns_type,
+    C.prepared_flag,
+    "__module__" in C.assignment_order,
+    "__qualname__" in C.assignment_order,
+    "VALUE" in C.assignment_order,
+)
+"""
+    env = run_interpreter(source, env={"classmethod": classmethod})
+    assert env["RESULT"] == ("PreparedNamespace", "ok", True, True, True)
+
+
+def test_enum_intenum_class_uses_enumdict_prepare_namespace():
+    source = """
+import enum
+
+class Status(enum.IntEnum):
+    OK = 200
+    NOT_FOUND = 404
+
+RESULT = (
+    Status.OK.value,
+    Status.__members__["NOT_FOUND"] is Status.NOT_FOUND,
+    tuple(Status.__members__.keys()),
+)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<enum_intenum_prepare_namespace>",
+        "__builtins__": builtins,
+    }
+    interpreter.run(source, env=env, filename="<enum_intenum_prepare_namespace>")
+    assert env["RESULT"] == (200, True, ("OK", "NOT_FOUND"))
+
+
 def test_class_private_slot_attribute_access_is_name_mangled(run_interpreter):
     source = """
 class Rat:

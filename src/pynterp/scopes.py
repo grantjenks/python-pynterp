@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Set
+from typing import Any, Dict, MutableMapping, Set
 
 from .code import ModuleCode, ScopeInfo
 from .common import UNBOUND, Cell
@@ -238,7 +238,7 @@ class ClassBodyScope(RuntimeScope):
         globals_dict: dict,
         builtins_dict: dict,
         outer_scope: RuntimeScope,
-        class_ns: Dict[str, Any],
+        class_ns: MutableMapping[str, Any],
         class_cell: Cell | None = None,
         type_param_cells: Dict[str, Cell] | None = None,
         private_owner: str | None = None,
@@ -292,7 +292,8 @@ class ClassBodyScope(RuntimeScope):
         return value
 
     def unbind(self, name: str) -> None:
-        self.class_ns.pop(name, None)
+        if name in self.class_ns:
+            del self.class_ns[name]
 
     def delete(self, name: str) -> None:
         if name in self.class_ns:

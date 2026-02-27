@@ -4,7 +4,7 @@ import ast
 import builtins as py_builtins
 import types as py_types
 import typing as py_typing
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from typing import Any, Dict, Iterator
 
 from .common import (
@@ -440,10 +440,27 @@ class StatementMixin:
 
         return annotations
 
-    def _normalize_class_namespace(self, class_ns: Dict[str, Any]) -> None:
+    def _seed_class_namespace(
+        self,
+        class_ns: MutableMapping[str, Any],
+        *,
+        node: ast.ClassDef,
+        scope: RuntimeScope,
+        type_params: tuple[Any, ...],
+        bases: tuple[Any, ...],
+        orig_bases: tuple[Any, ...],
+    ) -> None:
+        class_ns["__module__"] = scope.globals.get("__name__", "__main__")
+        class_ns["__qualname__"] = self._qualname_for_definition(node.name, scope)
+        if type_params:
+            class_ns["__type_params__"] = type_params
+        if bases != orig_bases:
+            class_ns["__orig_bases__"] = orig_bases
+
+    def _normalize_class_namespace(self, class_ns: MutableMapping[str, Any]) -> None:
         # CPython implicitly wraps these hooks as classmethod when they are plain functions.
         for name in ("__init_subclass__", "__class_getitem__"):
-            value = class_ns.get(name, _MISSING)
+            value = class_ns[name] if name in class_ns else _MISSING
             if isinstance(value, UserFunction):
                 class_ns[name] = py_builtins.classmethod(value)
 
@@ -1008,17 +1025,15 @@ class StatementMixin:
             else:
                 kw[k.arg] = self.eval_expr(k.value, eval_scope)
 
-        meta = kw.pop("metaclass", None)
-        if meta is None:
-            meta = type(bases[0]) if bases else type
-
-        class_ns: Dict[str, Any] = {}
-        class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
-        class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
-        if type_params:
-            class_ns.setdefault("__type_params__", type_params)
-        if bases != orig_bases:
-            class_ns.setdefault("__orig_bases__", orig_bases)
+        meta, class_ns, kw = py_types.prepare_class(node.name, bases, kw)
+        self._seed_class_namespace(
+            class_ns,
+            node=node,
+            scope=scope,
+            type_params=type_params,
+            bases=bases,
+            orig_bases=orig_bases,
+        )
         class_cell = Cell()
 
         body_scope = ClassBodyScope(
@@ -1524,17 +1539,15 @@ class StatementMixin:
             else:
                 kw[k.arg] = yield from self.g_eval_expr(k.value, eval_scope)
 
-        meta = kw.pop("metaclass", None)
-        if meta is None:
-            meta = type(bases[0]) if bases else type
-
-        class_ns: Dict[str, Any] = {}
-        class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
-        class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
-        if type_params:
-            class_ns.setdefault("__type_params__", type_params)
-        if bases != orig_bases:
-            class_ns.setdefault("__orig_bases__", orig_bases)
+        meta, class_ns, kw = py_types.prepare_class(node.name, bases, kw)
+        self._seed_class_namespace(
+            class_ns,
+            node=node,
+            scope=scope,
+            type_params=type_params,
+            bases=bases,
+            orig_bases=orig_bases,
+        )
         class_cell = Cell()
 
         body_scope = ClassBodyScope(
