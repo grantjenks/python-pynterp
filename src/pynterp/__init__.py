@@ -1,3 +1,3 @@
-from .interpreter import Interpreter
+from .main import Interpreter
 
 __all__ = ["Interpreter"]
