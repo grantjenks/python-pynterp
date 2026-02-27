@@ -99,6 +99,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "nested_generic_function_can_capture_outer_type_param or typealias_lambda_can_capture_type_param or generic_function_records_type_params_without_scope_leak" -q` => `3 passed`; `uv run pytest tests/test_core_semantics.py -q` => `74 passed, 3 skipped`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `5 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_type_params.py`): suite `errors` `19 -> 12` (`-7`); suite-error signatures `NameError: cannot capture 'A': not a cellvar or freevar in this scope` `7 -> 1`, `NameError: cannot capture 'T': not a cellvar or freevar in this scope` `3 -> 1` (combined `10 -> 2`, `-8`).
 - Expected full-probe delta on next rerun: suite-error signatures for hidden type-parameter capture (`cannot capture 'A'/'T'`) should decrease materially from the current baseline (pending full-run measurement).
+- Progress (2026-02-27, iter 010): Materialized interpreted function `__annotations__` for `def`/`async def`, including generic type-parameter resolution at definition time via `_TypeAliasEvalScope`.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "empty_annotations or annotations_capture_type_params" -q` => `2 passed, 77 deselected`; `uv run pytest tests/test_core_semantics.py -q` => `76 passed, 3 skipped`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_type_params.py`): suite `errors` `12 -> 11` (`-1`); suite-error signature `AttributeError: 'UserFunction' object has no attribute '__annotations__'` `1 -> 0`.
+- Expected full-probe delta on next rerun: suite-error signature `AttributeError: 'UserFunction' object has no attribute '__annotations__'` should remain at `0` (pending full-run measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

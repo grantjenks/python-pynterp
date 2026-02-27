@@ -330,6 +330,17 @@ RESULT = f.__type_params__
     assert env["RESULT"] == ()
 
 
+def test_user_function_exposes_empty_annotations_by_default(run_interpreter):
+    source = """
+def f(value):
+    return value
+
+RESULT = f.__annotations__
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == {}
+
+
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
 def test_generic_function_records_type_params_without_scope_leak(run_interpreter):
     source = """
@@ -348,6 +359,25 @@ RESULT = (T_param.__name__, f(7), leaked)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == ("T", 7, False)
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_function_annotations_capture_type_params(run_interpreter):
+    source = """
+def func[T](a: T = "a", *, b: T = "b"):
+    return (a, b)
+
+T_param, = func.__type_params__
+RESULT = (
+    func.__annotations__["a"] is T_param,
+    func.__annotations__["b"] is T_param,
+    func(),
+    func(1),
+    func(b=2),
+)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True, ("a", "b"), (1, "b"), ("a", 2))
 
 
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")

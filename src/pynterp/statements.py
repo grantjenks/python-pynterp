@@ -153,6 +153,35 @@ class StatementMixin:
             type_params.append(type_param)
         return tuple(type_params)
 
+    def _build_function_annotations(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: RuntimeScope,
+        type_param_bindings: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        annotations: Dict[str, Any] = {}
+        eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
+        args = node.args
+
+        for arg in (*args.posonlyargs, *args.args):
+            if arg.annotation is not None:
+                annotations[arg.arg] = self.eval_expr(arg.annotation, eval_scope)
+
+        if args.vararg is not None and args.vararg.annotation is not None:
+            annotations[args.vararg.arg] = self.eval_expr(args.vararg.annotation, eval_scope)
+
+        for arg in args.kwonlyargs:
+            if arg.annotation is not None:
+                annotations[arg.arg] = self.eval_expr(arg.annotation, eval_scope)
+
+        if args.kwarg is not None and args.kwarg.annotation is not None:
+            annotations[args.kwarg.arg] = self.eval_expr(args.kwarg.annotation, eval_scope)
+
+        if node.returns is not None:
+            annotations["return"] = self.eval_expr(node.returns, eval_scope)
+
+        return annotations
+
     def _normalize_class_namespace(self, class_ns: Dict[str, Any]) -> None:
         # CPython implicitly wraps these hooks as classmethod when they are plain functions.
         for name in ("__init_subclass__", "__class_getitem__"):
@@ -617,6 +646,7 @@ class StatementMixin:
             type_param_node.name: type_param
             for type_param_node, type_param in zip(type_param_nodes, type_params)
         }
+        annotations = self._build_function_annotations(node, scope, type_param_bindings)
         closure: Dict[str, Cell] = {}
         for free_name in fn_scope_info.frees:
             type_param = type_param_bindings.get(free_name, _MISSING)
@@ -640,6 +670,7 @@ class StatementMixin:
             is_async_generator=is_async and contains_yield,
             qualname=self._qualname_for_definition(node.name, scope),
             type_params=type_params,
+            annotations=annotations,
             private_owner=getattr(scope, "private_owner", None),
         )
 

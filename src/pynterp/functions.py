@@ -126,6 +126,7 @@ class UserFunction:
         is_async_generator: bool = False,
         qualname: str | None = None,
         type_params: tuple[Any, ...] = (),
+        annotations: Dict[str, Any] | None = None,
         private_owner: str | None = None,
     ):
         self.interpreter = interpreter
@@ -144,6 +145,7 @@ class UserFunction:
         self.__name__ = name
         self.__qualname__ = qualname if qualname is not None else name
         self.__module__ = globals_dict.get("__name__", "__main__")
+        self.__annotations__ = dict(annotations) if annotations is not None else {}
         self.__type_params__ = tuple(type_params)
         self._private_owner = private_owner
 
