@@ -149,6 +149,31 @@ def patch_system_limit_probe():
 
 patch_system_limit_probe()
 
+def patch_traceback_print_exc_probe():
+    # CPython test trees may pass traceback.print_exc(colorize=...),
+    # while the worker runtime might not support that keyword yet.
+    try:
+        import inspect
+        import traceback
+    except Exception:
+        return
+
+    original_print_exc = traceback.print_exc
+    try:
+        params = inspect.signature(original_print_exc).parameters
+    except Exception:
+        return
+    if "colorize" in params:
+        return
+
+    def wrapped_print_exc(*args, **kwargs):
+        kwargs.pop("colorize", None)
+        return original_print_exc(*args, **kwargs)
+
+    traceback.print_exc = wrapped_print_exc
+
+patch_traceback_print_exc_probe()
+
 source = test_path.read_text(encoding="utf-8", errors="ignore")
 interp = Interpreter(allowed_imports=None, allow_relative_imports=True)
 if mode == "module":

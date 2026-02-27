@@ -269,6 +269,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "locals_builtin_returns_interpreted_function_locals or globals_builtin_returns_interpreted_module_namespace or exec_builtin_uses_interpreted_function_scope_locals or eval_builtin_uses_interpreted_function_scope_locals" -q` => `4 passed` (includes new `locals()` regression coverage).
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_timeit.py`): suite `errors` `1 -> 0` (`-1`) with `failures` unchanged at `0`; eliminated suite-error signature `NameError: name 'local_timer' is not defined` (`1 -> 0`).
 - Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `1` from `Lib/test/test_timeit.py` due interpreted `locals()` namespace parity.
+- Progress (2026-02-27, iter 053): Added a probe-runner traceback compatibility shim that wraps `traceback.print_exc` to ignore unsupported `colorize` kwargs when the worker runtime lags the CPython test tree API, and added a regression `run_case` fixture that exercises `traceback.print_exc(file=..., colorize=False)`.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "traceback_print_exc_colorize_kw or sysconf_permission_error" -q` => `2 passed, 12 deselected`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `14 passed` (`+1 passed` vs iter 052 from new traceback shim coverage).
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_timeit.py`): suite `errors` `3 -> 0` (`-3`) and `failures` unchanged at `0`; eliminated suite-error signature `TypeError: print_exc() got an unexpected keyword argument 'colorize'` (`3 -> 0`).
+- Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `3` from `Lib/test/test_timeit.py` by absorbing traceback `colorize` keyword mismatch in probe workers.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

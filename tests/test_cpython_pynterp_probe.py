@@ -226,6 +226,54 @@ class SysconfPermissionCase(unittest.TestCase):
     assert payload["errors"] == 0
 
 
+def test_run_case_normalizes_traceback_print_exc_colorize_kw(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    lib_root = cpython_root / "Lib"
+    test_root = lib_root / "test"
+    test_root.mkdir(parents=True)
+
+    test_path = test_root / "test_traceback_colorize_kw.py"
+    test_path.write_text(
+        """
+import io
+import traceback
+import unittest
+
+class TracebackColorizeKwCase(unittest.TestCase):
+    def test_print_exc_accepts_colorize_kw(self):
+        stream = io.StringIO()
+        try:
+            1 / 0
+        except ZeroDivisionError:
+            traceback.print_exc(file=stream, colorize=False)
+        self.assertIn("ZeroDivisionError", stream.getvalue())
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    case = probe.TestCase(
+        path=test_path,
+        module_name="test_traceback_colorize_kw",
+        package_name="",
+        declared_tests=1,
+    )
+    payload = probe.run_case(
+        case,
+        cpython_root=cpython_root,
+        python_exe=Path(sys.executable),
+        pynterp_src=Path(__file__).resolve().parents[1] / "src",
+        mode="module",
+        basis="tests",
+        timeout=10,
+    )
+
+    assert payload["status"] == "suite"
+    assert payload["tests_run"] == 1
+    assert payload["failures"] == 0
+    assert payload["errors"] == 0
+
+
 def test_run_case_uses_live_builtins_for_rebinding(tmp_path: Path) -> None:
     probe = load_probe_module()
     cpython_root = tmp_path / "cpython"
