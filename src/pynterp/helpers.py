@@ -181,8 +181,10 @@ class HelperMixin:
 
         posonly = getattr(node.args, "posonlyargs", []) or []
         pos_or_kw = getattr(node.args, "args", []) or []
+        kwonlyargs = getattr(node.args, "kwonlyargs", []) or []
         params_nodes = posonly + pos_or_kw
         params = [a.arg for a in params_nodes]
+        kwonly_names = {a.arg for a in kwonlyargs}
 
         default_map: Dict[str, Any] = {}
         if func_obj.defaults:
@@ -206,7 +208,7 @@ class HelperMixin:
 
         # keyword binding
         for k, v in kwargs.items():
-            if k in params:
+            if k in params or k in kwonly_names:
                 if any(k == a.arg for a in posonly):
                     raise TypeError(
                         f"{node.name}() got positional-only arg '{k}' passed as keyword"
@@ -232,7 +234,6 @@ class HelperMixin:
                     raise TypeError(f"{node.name}() missing required argument '{name}'")
 
         # kw-only
-        kwonlyargs = getattr(node.args, "kwonlyargs", []) or []
         if kwonlyargs:
             for arg_node, default_val in zip(kwonlyargs, func_obj.kw_defaults):
                 name = arg_node.arg

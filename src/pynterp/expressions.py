@@ -8,6 +8,26 @@ from .symtable_utils import _collect_comprehension_locals
 
 
 class ExpressionMixin:
+    def _callable_name(self, func: Any) -> str:
+        return getattr(func, "__name__", type(func).__name__)
+
+    def _store_keyword(self, func: Any, kwargs: Dict[str, Any], key: str, value: Any) -> None:
+        if key in kwargs:
+            name = self._callable_name(func)
+            raise TypeError(f"{name}() got multiple values for keyword argument '{key}'")
+        kwargs[key] = value
+
+    def _merge_keyword_mapping(self, func: Any, kwargs: Dict[str, Any], mapping: Any) -> None:
+        if not hasattr(mapping, "keys"):
+            name = self._callable_name(func)
+            raise TypeError(
+                f"{name}() argument after ** must be a mapping, not {type(mapping).__name__}"
+            )
+        for key in mapping.keys():
+            if not isinstance(key, str):
+                raise TypeError("keywords must be strings")
+            self._store_keyword(func, kwargs, key, mapping[key])
+
     def eval_Constant(self, node: ast.Constant, scope: RuntimeScope) -> Any:
         return node.value
 
@@ -68,9 +88,11 @@ class ExpressionMixin:
         kwargs: Dict[str, Any] = {}
         for kw in node.keywords:
             if kw.arg is None:
-                kwargs.update(self.eval_expr(kw.value, scope))
+                mapping = self.eval_expr(kw.value, scope)
+                self._merge_keyword_mapping(func, kwargs, mapping)
             else:
-                kwargs[kw.arg] = self.eval_expr(kw.value, scope)
+                value = self.eval_expr(kw.value, scope)
+                self._store_keyword(func, kwargs, kw.arg, value)
         return func(*args, **kwargs)
 
     def eval_List(self, node: ast.List, scope: RuntimeScope) -> list:
@@ -321,9 +343,11 @@ class ExpressionMixin:
         kwargs: Dict[str, Any] = {}
         for kw in node.keywords:
             if kw.arg is None:
-                kwargs.update((yield from self.g_eval_expr(kw.value, scope)))
+                mapping = yield from self.g_eval_expr(kw.value, scope)
+                self._merge_keyword_mapping(func, kwargs, mapping)
             else:
-                kwargs[kw.arg] = yield from self.g_eval_expr(kw.value, scope)
+                value = yield from self.g_eval_expr(kw.value, scope)
+                self._store_keyword(func, kwargs, kw.arg, value)
         return func(*args, **kwargs)
 
     def g_eval_List(self, node: ast.List, scope: RuntimeScope) -> Iterator[list]:
