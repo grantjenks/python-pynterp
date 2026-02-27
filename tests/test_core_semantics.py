@@ -158,6 +158,50 @@ RESULT = (isinstance(PAYLOAD, (bytes, bytearray)), str(ROUNDTRIP))
     assert env["RESULT"] == (True, "list[~T]")
 
 
+def test_user_function_pickle_roundtrip_succeeds():
+    source = """
+import pickle
+
+def global_pos_only_f(a, b, /):
+    return a, b
+
+PAYLOAD = pickle.dumps(global_pos_only_f, protocol=0)
+ROUNDTRIP = pickle.loads(PAYLOAD)
+RESULT = (
+    isinstance(PAYLOAD, (bytes, bytearray)),
+    ROUNDTRIP is global_pos_only_f,
+    ROUNDTRIP(1, 2),
+)
+"""
+    import sys
+    import types
+
+    module_name = "test_pickle_user_function_mod"
+    module = types.ModuleType(module_name)
+    env = module.__dict__
+    env.update(
+        {
+            "__name__": module_name,
+            "__package__": None,
+            "__file__": "<test_pickle_user_function>",
+            "__builtins__": dict(builtins.__dict__),
+        }
+    )
+
+    previous = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+        interpreter.run(source, env=env, filename="<test_pickle_user_function>")
+    finally:
+        if previous is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+
+    assert env["RESULT"] == (True, True, (1, 2))
+
+
 def test_generic_alias_base_resolves_to_origin_type(run_interpreter):
     source = """
 class C(list[int]):

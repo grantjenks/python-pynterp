@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from typing import TYPE_CHECKING, Any, Dict
 
 from .code import ModuleCode, ScopeInfo
@@ -8,6 +9,20 @@ from .common import Cell
 
 if TYPE_CHECKING:
     from .main import Interpreter
+
+
+def _resolve_qualname_attr(obj: Any, qualname: str) -> Any:
+    current = obj
+    for part in qualname.split("."):
+        if part == "<locals>":
+            raise TypeError(f"cannot resolve local object {qualname!r}")
+        current = getattr(current, part)
+    return current
+
+
+def _load_user_function_global(module_name: str, qualname: str) -> Any:
+    module = importlib.import_module(module_name)
+    return _resolve_qualname_attr(module, qualname)
 
 
 class BoundMethod:
@@ -63,6 +78,7 @@ class UserFunction:
         name = node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<lambda>"
         self.__name__ = name
         self.__qualname__ = qualname if qualname is not None else name
+        self.__module__ = globals_dict.get("__name__", "__main__")
 
     def __repr__(self) -> str:
         if self.is_async_generator:
@@ -82,3 +98,25 @@ class UserFunction:
         if obj is None:
             return self
         return BoundMethod(self, obj)
+
+    def __reduce_ex__(self, protocol: int):
+        return self.__reduce__()
+
+    def __reduce__(self):
+        module_name = self.__module__
+        if not isinstance(module_name, str):
+            raise TypeError(f"cannot pickle {type(self).__name__!r} object without module")
+
+        qualname = self.__qualname__
+        if not isinstance(qualname, str):
+            raise TypeError(f"cannot pickle {type(self).__name__!r} object with invalid qualname")
+        if "<locals>" in qualname:
+            raise TypeError(f"cannot pickle local interpreted function {qualname!r}")
+
+        resolved = _load_user_function_global(module_name, qualname)
+        if resolved is not self:
+            raise TypeError(
+                f"cannot pickle interpreted function {module_name}.{qualname}: "
+                "it is not the current module global"
+            )
+        return (_load_user_function_global, (module_name, qualname))

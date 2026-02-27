@@ -72,6 +72,9 @@ Use this section as the source of truth for intentional exclusions.
 
 2. Reduce remaining `Suite/Error` bucket first.
 - Done when: top 10 current suite-error signatures each show clear net reduction in a full probe rerun.
+- Progress (2026-02-27, iter 002): Added pickle reduction support for module-level `pynterp.functions.UserFunction` via `__module__` + `__reduce__/__reduce_ex__` global resolution.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "pickle"` => `2 passed` (new user-function pickle roundtrip regression included); `uv run pytest tests/test_core_semantics.py` => `64 passed, 3 skipped`.
+- Expected full-probe delta on next rerun: suite-error signature `when serializing pynterp.functions.UserFunction object` should drop from `25` toward `0` (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
