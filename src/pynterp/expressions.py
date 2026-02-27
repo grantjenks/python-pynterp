@@ -214,7 +214,8 @@ class ExpressionMixin:
             raise NotImplementedError(
                 f"NamedExpr target not supported: {target.__class__.__name__}"
             )
-        self._namedexpr_store_scope(scope).store(target.id, value)
+        target_scope = self._namedexpr_store_scope(scope)
+        target_scope.store(self._mangle_private_name(target.id, target_scope), value)
 
     def eval_NamedExpr(self, node: ast.NamedExpr, scope: RuntimeScope) -> Any:
         value = self.eval_expr(node.value, scope)

@@ -478,6 +478,40 @@ RESULT = (r.num(), r.bump(), hasattr(r, "_Rat__num"), hasattr(r, "__num"))
     assert env["RESULT"] == (2, 3, True, False)
 
 
+def test_class_private_with_target_name_is_mangled(run_interpreter):
+    source = """
+class C:
+    def f(self):
+        class CM:
+            def __enter__(self):
+                return 7
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with CM() as __x:
+            return __x
+
+RESULT = C().f()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == 7
+
+
+def test_class_private_augassign_and_namedexpr_targets_are_mangled(run_interpreter):
+    source = """
+class C:
+    def f(self):
+        __x = 1
+        __x += 2
+        (__x := __x + 3)
+        return __x
+
+RESULT = C().f()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == 6
+
+
 @pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
 def test_typealias_statement_builds_runtime_alias_with_params(run_interpreter):
     source = """

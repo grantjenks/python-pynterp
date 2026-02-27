@@ -283,7 +283,7 @@ class HelperMixin:
 
     def _assign_target(self, target: ast.AST, value: Any, scope: RuntimeScope) -> None:
         if isinstance(target, ast.Name):
-            scope.store(target.id, value)
+            scope.store(self._mangle_private_name(target.id, scope), value)
             return
         if isinstance(target, (ast.Tuple, ast.List)):
             for elt, item in self._unpack_sequence_target(target, value):
@@ -309,7 +309,7 @@ class HelperMixin:
 
     def g_assign_target(self, target: ast.AST, value: Any, scope: RuntimeScope) -> Iterator[Any]:
         if isinstance(target, ast.Name):
-            scope.store(target.id, value)
+            scope.store(self._mangle_private_name(target.id, scope), value)
             return
             yield
         if isinstance(target, (ast.Tuple, ast.List)):
@@ -332,7 +332,7 @@ class HelperMixin:
 
     def _delete_target(self, target: ast.AST, scope: RuntimeScope) -> None:
         if isinstance(target, ast.Name):
-            scope.delete(target.id)
+            scope.delete(self._mangle_private_name(target.id, scope))
             return
         if isinstance(target, (ast.Tuple, ast.List)):
             for elt in target.elts:
@@ -355,7 +355,7 @@ class HelperMixin:
 
     def g_delete_target(self, target: ast.AST, scope: RuntimeScope) -> Iterator[Any]:
         if isinstance(target, ast.Name):
-            scope.delete(target.id)
+            scope.delete(self._mangle_private_name(target.id, scope))
             return
             yield
         if isinstance(target, (ast.Tuple, ast.List)):
@@ -377,7 +377,7 @@ class HelperMixin:
         self, target: ast.expr, scope: RuntimeScope
     ) -> tuple[Any, Callable[[Any], None]]:
         if isinstance(target, ast.Name):
-            name = target.id
+            name = self._mangle_private_name(target.id, scope)
             old = scope.load(name)
 
             def store(value: Any) -> None:
@@ -415,7 +415,7 @@ class HelperMixin:
         self, target: ast.expr, scope: RuntimeScope
     ) -> Iterator[tuple[Any, Callable[[Any], None]]]:
         if isinstance(target, ast.Name):
-            name = target.id
+            name = self._mangle_private_name(target.id, scope)
             old = scope.load(name)
 
             def store(value: Any) -> None:
