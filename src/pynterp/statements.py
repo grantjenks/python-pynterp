@@ -99,6 +99,67 @@ class _AsyncForAwaitable:
 
 
 class StatementMixin:
+    def _mangle_private_name_for_owner(self, name: str, private_owner: str | None) -> str:
+        if not private_owner or not isinstance(name, str):
+            return name
+        if not name.startswith("__") or name.endswith("__") or "." in name:
+            return name
+        owner = private_owner.lstrip("_")
+        if not owner:
+            return name
+        return f"_{owner}{name}"
+
+    def _type_param_binding_names(
+        self, name: str, *, private_owner: str | None
+    ) -> tuple[str, ...]:
+        names = [name]
+        mangled_name = self._mangle_private_name_for_owner(name, private_owner)
+        if mangled_name != name:
+            names.append(mangled_name)
+        return tuple(names)
+
+    def _build_type_param_binding_map(
+        self,
+        type_param_nodes: Sequence[ast.AST],
+        type_params: Sequence[Any],
+        *,
+        private_owner: str | None,
+    ) -> Dict[str, Any]:
+        bindings: Dict[str, Any] = {}
+        for type_param_node, type_param in zip(type_param_nodes, type_params):
+            for binding_name in self._type_param_binding_names(
+                type_param_node.name,
+                private_owner=private_owner,
+            ):
+                bindings[binding_name] = type_param
+        return bindings
+
+    def _build_type_param_cell_map(
+        self,
+        type_param_nodes: Sequence[ast.AST],
+        type_params: Sequence[Any],
+        *,
+        private_owner: str | None,
+    ) -> Dict[str, Cell]:
+        cells: Dict[str, Cell] = {}
+        for type_param_node, type_param in zip(type_param_nodes, type_params):
+            type_param_cell = Cell(type_param)
+            for binding_name in self._type_param_binding_names(
+                type_param_node.name,
+                private_owner=private_owner,
+            ):
+                cells[binding_name] = type_param_cell
+        return cells
+
+    def _new_provisional_type_param(self, node: ast.AST, scope: RuntimeScope) -> Any:
+        if isinstance(node, ast.TypeVar):
+            return self._typing_runtime_call(scope, py_typing.TypeVar, node.name)
+        if isinstance(node, ast.ParamSpec):
+            return self._typing_runtime_call(scope, py_typing.ParamSpec, node.name)
+        if isinstance(node, ast.TypeVarTuple):
+            return self._typing_runtime_call(scope, py_typing.TypeVarTuple, node.name)
+        raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")
+
     def _eval_type_param_default(
         self, node: ast.expr, scope: RuntimeScope
     ) -> Any:
@@ -152,7 +213,16 @@ class StatementMixin:
     def _build_type_param(
         self, node: ast.AST, scope: RuntimeScope, type_param_bindings: Dict[str, Any]
     ) -> Any:
-        eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
+        eval_bindings = dict(type_param_bindings)
+        private_owner = getattr(scope, "private_owner", None)
+        if hasattr(node, "name"):
+            provisional = self._new_provisional_type_param(node, scope)
+            for binding_name in self._type_param_binding_names(
+                node.name,
+                private_owner=private_owner,
+            ):
+                eval_bindings.setdefault(binding_name, provisional)
+        eval_scope = _TypeAliasEvalScope(scope, eval_bindings)
 
         if isinstance(node, ast.TypeVar):
             kwargs: Dict[str, Any] = {}
@@ -185,9 +255,14 @@ class StatementMixin:
     def _build_type_params(self, nodes: Sequence[ast.AST], scope: RuntimeScope) -> tuple[Any, ...]:
         type_param_bindings: Dict[str, Any] = {}
         type_params: list[Any] = []
+        private_owner = getattr(scope, "private_owner", None)
         for type_param_node in nodes:
             type_param = self._build_type_param(type_param_node, scope, type_param_bindings)
-            type_param_bindings[type_param_node.name] = type_param
+            for binding_name in self._type_param_binding_names(
+                type_param_node.name,
+                private_owner=private_owner,
+            ):
+                type_param_bindings[binding_name] = type_param
             type_params.append(type_param)
         return tuple(type_params)
 
@@ -235,10 +310,11 @@ class StatementMixin:
 
         type_params = self._build_type_params(node.type_params, scope)
 
-        type_param_bindings = {
-            type_param_node.name: type_param
-            for type_param_node, type_param in zip(node.type_params, type_params)
-        }
+        type_param_bindings = self._build_type_param_binding_map(
+            node.type_params,
+            type_params,
+            private_owner=getattr(scope, "private_owner", None),
+        )
         alias_eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
         alias_value = self.eval_expr(node.value, alias_eval_scope)
         alias = self._typing_runtime_call(
@@ -680,10 +756,11 @@ class StatementMixin:
         fn_scope_info = scope.code.scope_info_for(fn_table)
         type_param_nodes = getattr(node, "type_params", ()) or ()
         type_params = self._build_type_params(type_param_nodes, scope)
-        type_param_bindings = {
-            type_param_node.name: type_param
-            for type_param_node, type_param in zip(type_param_nodes, type_params)
-        }
+        type_param_bindings = self._build_type_param_binding_map(
+            type_param_nodes,
+            type_params,
+            private_owner=getattr(scope, "private_owner", None),
+        )
         annotations = self._build_function_annotations(node, scope, type_param_bindings)
         closure: Dict[str, Cell] = {}
         for free_name in fn_scope_info.frees:
@@ -757,14 +834,16 @@ class StatementMixin:
     def exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> None:
         type_param_nodes = getattr(node, "type_params", ()) or ()
         type_params = self._build_type_params(type_param_nodes, scope)
-        type_param_bindings = {
-            type_param_node.name: type_param
-            for type_param_node, type_param in zip(type_param_nodes, type_params)
-        }
-        type_param_cells = {
-            type_param_name: Cell(type_param)
-            for type_param_name, type_param in type_param_bindings.items()
-        }
+        type_param_bindings = self._build_type_param_binding_map(
+            type_param_nodes,
+            type_params,
+            private_owner=node.name,
+        )
+        type_param_cells = self._build_type_param_cell_map(
+            type_param_nodes,
+            type_params,
+            private_owner=node.name,
+        )
         eval_scope: RuntimeScope = (
             _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
         )
@@ -1248,14 +1327,16 @@ class StatementMixin:
     def g_exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> Iterator[Any]:
         type_param_nodes = getattr(node, "type_params", ()) or ()
         type_params = self._build_type_params(type_param_nodes, scope)
-        type_param_bindings = {
-            type_param_node.name: type_param
-            for type_param_node, type_param in zip(type_param_nodes, type_params)
-        }
-        type_param_cells = {
-            type_param_name: Cell(type_param)
-            for type_param_name, type_param in type_param_bindings.items()
-        }
+        type_param_bindings = self._build_type_param_binding_map(
+            type_param_nodes,
+            type_params,
+            private_owner=node.name,
+        )
+        type_param_cells = self._build_type_param_cell_map(
+            type_param_nodes,
+            type_params,
+            private_owner=node.name,
+        )
         eval_scope: RuntimeScope = (
             _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
         )

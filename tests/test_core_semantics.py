@@ -515,6 +515,39 @@ RESULT = (
     assert env["RESULT"] == (True, True)
 
 
+@pytest.mark.skipif(
+    not (HAS_TYPE_ALIAS and HAS_TYPE_PARAMS),
+    reason="TypeAlias and type params require Python 3.12+",
+)
+def test_typealias_constraint_comprehension_sees_current_type_param(run_interpreter):
+    source = """
+type Alias[T: ([T for T in (T, [1])[1]], T)] = [T for T in T.__name__]
+T, = Alias.__type_params__
+constraint_0, constraint_1 = T.__constraints__
+RESULT = (Alias.__value__, constraint_0, constraint_1.__name__)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (["T"], [1], "T")
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_method_private_type_param_capture_uses_mangled_name(run_interpreter):
+    source = """
+class Foo[__T]:
+    def meth[__U](self, arg: __T, arg2: __U):
+        return arg
+
+RESULT = (
+    Foo.__type_params__[0].__name__,
+    Foo.meth.__type_params__[0].__name__,
+    Foo.meth.__annotations__["arg"].__name__,
+    Foo.meth.__annotations__["arg2"].__name__,
+)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("__T", "__U", "__T", "__U")
+
+
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
 def test_nested_class_body_skips_outer_class_locals_for_name_loads(run_interpreter):
     source = """
