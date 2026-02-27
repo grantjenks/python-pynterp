@@ -126,6 +126,7 @@ class UserFunction:
         is_async_generator: bool = False,
         qualname: str | None = None,
         type_params: tuple[Any, ...] = (),
+        private_owner: str | None = None,
     ):
         self.interpreter = interpreter
         self.node = node
@@ -144,6 +145,7 @@ class UserFunction:
         self.__qualname__ = qualname if qualname is not None else name
         self.__module__ = globals_dict.get("__name__", "__main__")
         self.__type_params__ = tuple(type_params)
+        self._private_owner = private_owner
 
     def __repr__(self) -> str:
         if self.is_async_generator:

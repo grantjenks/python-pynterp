@@ -91,6 +91,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "user_function_exposes_empty_type_params or generic_function_records_type_params_without_scope_leak" -q` => `2 passed`; `uv run pytest tests/test_core_semantics.py -k "type_params or typealias" -q` => `4 passed`; `uv run pytest tests/test_core_semantics.py -q` => `71 passed, 3 skipped`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_type_params.py`): suite `errors` `25 -> 19` (`-6`), and suite-error signature `AttributeError: 'UserFunction' object has no attribute '__type_params__'` `7 -> 0`.
 - Expected full-probe delta on next rerun: suite-error signature `AttributeError: 'UserFunction' object has no attribute '__type_params__'` should drop from `7` toward `0` (pending measurement).
+- Progress (2026-02-27, iter 008): Added class-private attribute name mangling (`__x` -> `_Class__x`) for interpreted class contexts by propagating class ownership into nested function call scopes and applying mangling across attribute load/store/delete/augassign paths.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "class_private_slot_attribute_access_is_name_mangled or init_subclass or class_getitem" -q` => `3 passed`; `uv run pytest tests/test_core_semantics.py -q` => `72 passed, 3 skipped`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `5 passed`.
+- Targeted CPython 3.14 diagnostic (`Lib/test/test_binop.py` via interpreter harness): suite `errors` `9 -> 1` (`-8`), and suite-error signature `AttributeError: 'Rat' object has no attribute '__num' and no __dict__ for setting new attributes` `8 -> 0`.
+- Expected full-probe delta on next rerun: suite-error signature `AttributeError: 'Rat' object has no attribute '__num' and no __dict__ for setting new attributes` should drop from `8` toward `0` (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

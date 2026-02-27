@@ -199,6 +199,7 @@ class ExpressionMixin:
             kw_defaults=kw_defaults,
             is_generator=False,
             qualname=self._qualname_for_definition("<lambda>", scope),
+            private_owner=getattr(scope, "private_owner", None),
         )
 
     def eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Any:
@@ -266,8 +267,9 @@ class ExpressionMixin:
     def eval_Attribute(self, node: ast.Attribute, scope: RuntimeScope) -> Any:
         obj = self.eval_expr(node.value, scope)
         if isinstance(node.ctx, ast.Load):
-            guard_attr_name(node.attr)
-            return getattr(obj, node.attr)
+            attr_name = self._mangle_private_name(node.attr, scope)
+            guard_attr_name(attr_name)
+            return getattr(obj, attr_name)
         raise NotImplementedError("Attribute ctx other than Load not supported here")
 
     def eval_Subscript(self, node: ast.Subscript, scope: RuntimeScope) -> Any:
@@ -556,6 +558,7 @@ class ExpressionMixin:
             kw_defaults=kw_defaults,
             is_generator=False,
             qualname=self._qualname_for_definition("<lambda>", scope),
+            private_owner=getattr(scope, "private_owner", None),
         )
 
     def g_eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Iterator[Any]:
@@ -623,8 +626,9 @@ class ExpressionMixin:
 
     def g_eval_Attribute(self, node: ast.Attribute, scope: RuntimeScope) -> Iterator[Any]:
         obj = yield from self.g_eval_expr(node.value, scope)
-        guard_attr_name(node.attr)
-        return getattr(obj, node.attr)
+        attr_name = self._mangle_private_name(node.attr, scope)
+        guard_attr_name(attr_name)
+        return getattr(obj, attr_name)
 
     def g_eval_Subscript(self, node: ast.Subscript, scope: RuntimeScope) -> Iterator[Any]:
         obj = yield from self.g_eval_expr(node.value, scope)

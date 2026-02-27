@@ -126,6 +126,17 @@ class HelperMixin:
             return name
         return f"{prefix}.{name}"
 
+    def _mangle_private_name(self, name: str, scope: RuntimeScope) -> str:
+        owner = getattr(scope, "private_owner", None)
+        if not owner or not isinstance(name, str):
+            return name
+        if not name.startswith("__") or name.endswith("__") or "." in name:
+            return name
+        owner = owner.lstrip("_")
+        if not owner:
+            return name
+        return f"_{owner}{name}"
+
     def _unpack_sequence_target(self, target: ast.Tuple | ast.List, value: Any) -> list[tuple[ast.AST, Any]]:
         items = list(value)
         elts = list(target.elts)
@@ -182,7 +193,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = self.eval_expr(target.value, scope)
-            safe_setattr(obj, target.attr, value)
+            safe_setattr(obj, self._mangle_private_name(target.attr, scope), value)
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
@@ -209,7 +220,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = yield from self.g_eval_expr(target.value, scope)
-            safe_setattr(obj, target.attr, value)
+            safe_setattr(obj, self._mangle_private_name(target.attr, scope), value)
             return
         if isinstance(target, ast.Subscript):
             obj = yield from self.g_eval_expr(target.value, scope)
@@ -228,7 +239,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = self.eval_expr(target.value, scope)
-            safe_delattr(obj, target.attr)
+            safe_delattr(obj, self._mangle_private_name(target.attr, scope))
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
@@ -252,7 +263,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = yield from self.g_eval_expr(target.value, scope)
-            safe_delattr(obj, target.attr)
+            safe_delattr(obj, self._mangle_private_name(target.attr, scope))
             return
         if isinstance(target, ast.Subscript):
             obj = yield from self.g_eval_expr(target.value, scope)
@@ -275,10 +286,11 @@ class HelperMixin:
 
         if isinstance(target, ast.Attribute):
             obj = self.eval_expr(target.value, scope)
-            old = safe_getattr(obj, target.attr)
+            attr_name = self._mangle_private_name(target.attr, scope)
+            old = safe_getattr(obj, attr_name)
 
             def store(value: Any) -> None:
-                safe_setattr(obj, target.attr, value)
+                safe_setattr(obj, attr_name, value)
 
             return old, store
 
@@ -313,10 +325,11 @@ class HelperMixin:
 
         if isinstance(target, ast.Attribute):
             obj = yield from self.g_eval_expr(target.value, scope)
-            old = safe_getattr(obj, target.attr)
+            attr_name = self._mangle_private_name(target.attr, scope)
+            old = safe_getattr(obj, attr_name)
 
             def store(value: Any) -> None:
-                safe_setattr(obj, target.attr, value)
+                safe_setattr(obj, attr_name, value)
 
             return old, store
 
@@ -438,6 +451,7 @@ class HelperMixin:
             si,
             func_obj.closure,
             qualname=func_obj.__qualname__,
+            private_owner=func_obj._private_owner,
         )
 
         def is_bound(name: str) -> bool:

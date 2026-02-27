@@ -38,7 +38,12 @@ _BUILTIN_MATCH_SELF_TYPES = (
 
 class _TypeAliasEvalScope(RuntimeScope):
     def __init__(self, base_scope: RuntimeScope, type_param_bindings: Dict[str, Any]):
-        super().__init__(base_scope.code, base_scope.globals, base_scope.builtins)
+        super().__init__(
+            base_scope.code,
+            base_scope.globals,
+            base_scope.builtins,
+            private_owner=getattr(base_scope, "private_owner", None),
+        )
         self._base_scope = base_scope
         self._type_param_bindings = type_param_bindings
 
@@ -608,6 +613,7 @@ class StatementMixin:
             is_async_generator=is_async and contains_yield,
             qualname=self._qualname_for_definition(node.name, scope),
             type_params=type_params,
+            private_owner=getattr(scope, "private_owner", None),
         )
 
     def exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> None:
@@ -680,6 +686,7 @@ class StatementMixin:
             outer_scope=scope,
             class_ns=class_ns,
             class_cell=class_cell,
+            private_owner=node.name,
         )
         self.exec_block(node.body, body_scope)
         self._normalize_class_namespace(class_ns)
@@ -1153,6 +1160,7 @@ class StatementMixin:
             outer_scope=scope,
             class_ns=class_ns,
             class_cell=class_cell,
+            private_owner=node.name,
         )
         # class body itself cannot yield (syntax), so normal exec is OK:
         self.exec_block(node.body, body_scope)

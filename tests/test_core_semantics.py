@@ -257,6 +257,28 @@ RESULT = Box[int]
     assert env["RESULT"] == ("Box", "int")
 
 
+def test_class_private_slot_attribute_access_is_name_mangled(run_interpreter):
+    source = """
+class Rat:
+    __slots__ = ["_Rat__num"]
+
+    def __init__(self, value):
+        self.__num = value
+
+    def num(self):
+        return self.__num
+
+    def bump(self):
+        self.__num += 1
+        return self.__num
+
+r = Rat(2)
+RESULT = (r.num(), r.bump(), hasattr(r, "_Rat__num"), hasattr(r, "__num"))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (2, 3, True, False)
+
+
 @pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
 def test_typealias_statement_builds_runtime_alias_with_params(run_interpreter):
     source = """

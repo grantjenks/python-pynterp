@@ -7,11 +7,19 @@ from .common import UNBOUND, Cell
 
 
 class RuntimeScope:
-    def __init__(self, code: ModuleCode, globals_dict: dict, builtins_dict: dict):
+    def __init__(
+        self,
+        code: ModuleCode,
+        globals_dict: dict,
+        builtins_dict: dict,
+        *,
+        private_owner: str | None = None,
+    ):
         self.code = code
         self.globals = globals_dict
         self.builtins = builtins_dict
         self.active_exception: BaseException | None = None
+        self.private_owner = private_owner
 
     def load(self, name: str) -> Any:
         raise NotImplementedError
@@ -66,8 +74,14 @@ class FunctionScope(RuntimeScope):
         closure: Dict[str, Cell],
         *,
         qualname: str | None = None,
+        private_owner: str | None = None,
     ):
-        super().__init__(code, globals_dict, builtins_dict)
+        super().__init__(
+            code,
+            globals_dict,
+            builtins_dict,
+            private_owner=private_owner,
+        )
         self.scope_info = scope_info
         self.closure = dict(closure)
         self.qualname = qualname
@@ -222,8 +236,14 @@ class ClassBodyScope(RuntimeScope):
         outer_scope: RuntimeScope,
         class_ns: Dict[str, Any],
         class_cell: Cell | None = None,
+        private_owner: str | None = None,
     ):
-        super().__init__(code, globals_dict, builtins_dict)
+        super().__init__(
+            code,
+            globals_dict,
+            builtins_dict,
+            private_owner=private_owner,
+        )
         self.outer_scope = outer_scope
         self.class_ns = class_ns
         self.class_cell = class_cell
@@ -268,7 +288,12 @@ class ComprehensionScope(RuntimeScope):
         outer_scope: RuntimeScope,
         local_names: Set[str],
     ):
-        super().__init__(code, globals_dict, builtins_dict)
+        super().__init__(
+            code,
+            globals_dict,
+            builtins_dict,
+            private_owner=getattr(outer_scope, "private_owner", None),
+        )
         self.outer_scope = outer_scope
         self.local_names = set(local_names)
         self.locals: Dict[str, Any] = {}
