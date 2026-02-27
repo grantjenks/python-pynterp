@@ -783,6 +783,28 @@ RESULT = f.__annotations__
     assert env["RESULT"] == {}
 
 
+def test_user_function_exposes_annotate_callable(run_interpreter):
+    source = """
+def f(value: int):
+    return value
+
+RESULT = (callable(f.__annotate__), f.__annotate__(1))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, {"value": int})
+
+
+def test_unresolved_function_annotations_are_deferred_as_source_strings(run_interpreter):
+    source = """
+def f(value: MissingType):
+    return value
+
+RESULT = (f.__annotations__, f.__annotate__(1))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ({"value": "MissingType"}, {"value": "MissingType"})
+
+
 def test_function_local_annassign_does_not_evaluate_annotation_expression(run_interpreter):
     source = """
 def f():
@@ -2542,6 +2564,34 @@ RESULT = (tuple(events), target.__name__, target.__wrapped__.__name__)
     }
     interpreter.run(source, env=env, filename="<functools_wraps_user_function>")
     assert env["RESULT"] == (("wrapper", "target"), "target", "target")
+
+
+def test_functools_wraps_copies_user_function_annotate_thunk():
+    source = """
+import functools
+
+def f(value: MissingType):
+    return value
+
+def wrapper(*args, **kwargs):
+    return f(*args, **kwargs)
+
+functools.update_wrapper(wrapper, f)
+RESULT = (
+    hasattr(f, "__annotate__"),
+    hasattr(wrapper, "__annotate__"),
+    wrapper.__annotate__ is f.__annotate__,
+)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<functools_wraps_user_function_annotate>",
+        "__builtins__": builtins,
+    }
+    interpreter.run(source, env=env, filename="<functools_wraps_user_function_annotate>")
+    assert env["RESULT"] == (True, True, True)
 
 
 def test_unittest_loader_loads_user_function_test_method_without_calling_it():

@@ -150,6 +150,13 @@ def _build_user_function_signature(
     return inspect.Signature(parameters, return_annotation=annotations.get("return", empty))
 
 
+def _make_user_function_annotate(user_function: "UserFunction"):
+    def __annotate__(format, /):
+        return dict(user_function.__annotations__)
+
+    return __annotate__
+
+
 def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:
     """Convert an interpreted function into a native function for _interpreters.run_func()."""
     node = func.node
@@ -226,6 +233,7 @@ class UserFunction:
         "is_async_generator",
         "__name__",
         "__qualname__",
+        "__annotate__",
         "__annotations__",
         "__type_params__",
         "__signature__",
@@ -280,6 +288,7 @@ class UserFunction:
         self.__qualname__ = qualname if qualname is not None else name
         self.__module__ = globals_dict.get("__name__", "__main__")
         self.__annotations__ = dict(annotations) if annotations is not None else {}
+        self.__annotate__ = _make_user_function_annotate(self)
         self.__type_params__ = tuple(type_params)
         self.__signature__ = _build_user_function_signature(
             node,

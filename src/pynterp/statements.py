@@ -421,22 +421,29 @@ class StatementMixin:
         eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
         args = node.args
 
+        def eval_annotation(annotation_node: ast.expr) -> Any:
+            try:
+                return self.eval_expr(annotation_node, eval_scope)
+            except NameError:
+                # Defer unresolved names to annotation access time.
+                return ast.unparse(annotation_node)
+
         for arg in (*args.posonlyargs, *args.args):
             if arg.annotation is not None:
-                annotations[arg.arg] = self.eval_expr(arg.annotation, eval_scope)
+                annotations[arg.arg] = eval_annotation(arg.annotation)
 
         if args.vararg is not None and args.vararg.annotation is not None:
-            annotations[args.vararg.arg] = self.eval_expr(args.vararg.annotation, eval_scope)
+            annotations[args.vararg.arg] = eval_annotation(args.vararg.annotation)
 
         for arg in args.kwonlyargs:
             if arg.annotation is not None:
-                annotations[arg.arg] = self.eval_expr(arg.annotation, eval_scope)
+                annotations[arg.arg] = eval_annotation(arg.annotation)
 
         if args.kwarg is not None and args.kwarg.annotation is not None:
-            annotations[args.kwarg.arg] = self.eval_expr(args.kwarg.annotation, eval_scope)
+            annotations[args.kwarg.arg] = eval_annotation(args.kwarg.annotation)
 
         if node.returns is not None:
-            annotations["return"] = self.eval_expr(node.returns, eval_scope)
+            annotations["return"] = eval_annotation(node.returns)
 
         return annotations
 
