@@ -8,10 +8,11 @@ from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
 from .lib.guards import safe_getattr
-from .scopes import ComprehensionScope, RuntimeScope
+from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
 
 _NO_SUPER = object()
+_NO_SPECIAL_CALL = object()
 _TYPING_RUNTIME_FACTORIES = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple", "NewType"})
 
 try:  # Python < 3.14 has no t-string runtime objects.
@@ -105,6 +106,48 @@ class ExpressionMixin:
             raise RuntimeError("super(): no arguments") from exc
 
         return builtins.super(class_cell.value, first_arg_value)
+
+    def _default_exec_eval_locals(self, scope: RuntimeScope) -> dict[str, Any]:
+        if isinstance(scope, ModuleScope):
+            return scope.globals
+        if isinstance(scope, ClassBodyScope):
+            return scope.class_ns
+        if isinstance(scope, FunctionScope):
+            locals_dict: dict[str, Any] = {}
+            for name in scope.scope_info.locals:
+                try:
+                    locals_dict[name] = scope.load(name)
+                except (NameError, UnboundLocalError):
+                    continue
+            for name in scope.scope_info.frees:
+                try:
+                    locals_dict[name] = scope.load(name)
+                except NameError:
+                    continue
+            return locals_dict
+        if isinstance(scope, ComprehensionScope):
+            return dict(scope.locals)
+        return scope.globals
+
+    def _maybe_special_builtin_call(
+        self, func: Any, args: list[Any], kwargs: Dict[str, Any], scope: RuntimeScope
+    ) -> Any:
+        if func is builtins.eval:
+            if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
+                return builtins.eval(args[0], scope.globals, self._default_exec_eval_locals(scope))
+            return _NO_SPECIAL_CALL
+
+        if func is builtins.exec:
+            if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
+                return builtins.exec(
+                    args[0],
+                    scope.globals,
+                    self._default_exec_eval_locals(scope),
+                    **kwargs,
+                )
+            return _NO_SPECIAL_CALL
+
+        return _NO_SPECIAL_CALL
 
     def eval_Constant(self, node: ast.Constant, scope: RuntimeScope) -> Any:
         return node.value
@@ -220,6 +263,10 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         if func is builtins.globals and not args and not kwargs:
             return scope.globals
+        special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
+        if special_value is not _NO_SPECIAL_CALL:
+            result = self._adapt_runtime_value(special_value)
+            return self._maybe_fix_typing_runtime_module(func, result, scope)
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
@@ -580,6 +627,9 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         if func is builtins.globals and not args and not kwargs:
             return scope.globals
+        special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
+        if special_value is not _NO_SPECIAL_CALL:
+            return special_value
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value

@@ -140,6 +140,62 @@ RESULT = use_globals()
     assert env["RESULT"] == 7
 
 
+def test_exec_builtin_uses_interpreted_function_scope_locals() -> None:
+    source = """
+def run():
+    x = []
+    exec("x.append(12)")
+    return x
+
+RESULT = run()
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<test_exec_builtin>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<test_exec_builtin>")
+    assert env["RESULT"] == [12]
+
+
+def test_eval_builtin_uses_interpreted_function_scope_locals() -> None:
+    source = """
+def run():
+    x = 7
+    return eval("x + 5")
+
+RESULT = run()
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<test_eval_builtin>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<test_eval_builtin>")
+    assert env["RESULT"] == 12
+
+
+def test_module_code_handles_symtable_keyword_incompatibility(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pynterp import code as code_mod
+
+    called = False
+
+    def raises_keyword_typeerror(_source: str, _filename: str, _mode: str):
+        nonlocal called
+        called = True
+        raise TypeError("_symtable.symtable() takes no keyword arguments")
+
+    monkeypatch.setattr(code_mod.symtable, "symtable", raises_keyword_typeerror)
+
+    module_code = code_mod.ModuleCode("value = 1", filename="<symtable-compat>")
+    assert called is True
+    assert module_code.sym_root.get_type() == "module"
+
+
 def test_namedexpr_assigns_and_returns_value(run_interpreter):
     source = """
 total = (value := 40) + 2

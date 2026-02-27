@@ -7,6 +7,23 @@ from typing import Dict, Set
 from .symtable_utils import _table_frees
 
 
+def _build_symtable(source: str, filename: str) -> symtable.SymbolTable:
+    try:
+        return symtable.symtable(source, filename, "exec")
+    except TypeError as exc:
+        # CPython 3.14's Lib/symtable.py passes module=<...> as a keyword-only
+        # argument to _symtable.symtable(). Older host runtimes reject that call.
+        if "_symtable.symtable() takes no keyword arguments" not in str(exc):
+            raise
+        import _symtable
+
+        raw_table = _symtable.symtable(source, filename, "exec")
+        new_symbol_table = getattr(symtable, "_newSymbolTable", None)
+        if callable(new_symbol_table):
+            return new_symbol_table(raw_table, filename)
+        raise
+
+
 class ScopeInfo:
     """
     Per-function scope info needed for runtime name resolution.
@@ -35,7 +52,7 @@ class ModuleCode:
         self.source = source
         self.filename = filename
         self.tree = ast.parse(source, filename=filename, mode="exec")
-        self.sym_root = symtable.symtable(source, filename, "exec")
+        self.sym_root = _build_symtable(source, filename)
 
         self._tables_by_key: Dict[tuple[str, str, int], list[symtable.SymbolTable]] = {}
         self._cellvars_by_id: Dict[int, Set[str]] = {}
