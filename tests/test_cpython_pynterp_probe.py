@@ -375,16 +375,23 @@ def test_default_unsupported_patterns_include_dunder_code() -> None:
     assert r"\b__code__\b" in probe.DEFAULT_UNSUPPORTED_PATTERNS
 
 
-def test_resolve_case_timeout_applies_slow_module_override(tmp_path: Path) -> None:
+def test_resolve_case_timeout_applies_slow_module_overrides(tmp_path: Path) -> None:
     probe = load_probe_module()
     cpython_root = tmp_path / "cpython"
-    case_path = cpython_root / "Lib" / "test" / "test_zipfile64.py"
-    timeout = probe.resolve_case_timeout(
-        case_path=case_path,
-        cpython_root=cpython_root,
-        default_timeout=10,
-    )
-    assert timeout == 90
+    expectations = {
+        "Lib/test/test_zipfile64.py": 90,
+        "Lib/test/test_asyncio/test_taskgroups.py": 25,
+        "Lib/test/test_concurrent_futures/test_process_pool.py": 40,
+        "Lib/test/test_isinstance.py": 40,
+    }
+    for rel_path, expected in expectations.items():
+        case_path = cpython_root / rel_path
+        timeout = probe.resolve_case_timeout(
+            case_path=case_path,
+            cpython_root=cpython_root,
+            default_timeout=10,
+        )
+        assert timeout == expected
 
 
 def test_resolve_case_timeout_keeps_default_for_non_overridden_modules(tmp_path: Path) -> None:

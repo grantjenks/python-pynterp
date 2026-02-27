@@ -301,6 +301,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
 - Targeted CPython 3.14 diagnostics (`run_case` with input `timeout=10`): `Lib/test/test_asyncio/test_events.py` `timeout -> suite` (`tests_run=275`), `Lib/test/test_queue.py` `timeout -> suite` (`tests_run=162`), `Lib/test/test_zipfile64.py` `timeout -> suite` (`tests_run=4`).
 - Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `3` from these three item-3 target modules.
+- Progress (2026-02-27, iter 060): Expanded `resolve_case_timeout(...)` overrides for additional top timeout files from `iter059`: `test_asyncio/test_taskgroups.py` (`25s`), `test_concurrent_futures/test_as_completed.py` (`25s`), `test_concurrent_futures/test_process_pool.py` (`40s`), `test_concurrent_futures/test_shutdown.py` (`25s`), `test_concurrent_futures/test_thread_pool.py` (`25s`), and `test_isinstance.py` (`40s`).
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
+- Targeted CPython 3.14 diagnostics (`run_case`, input `timeout=10` with overrides active): each of the six files now returns `status="suite"` (no timeout) with elapsed times `10.3s` to `23.4s`; per-file `tests_run`: `96`, `25`, `114`, `53`, `26`, `23`.
+- Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `122` (sum of declared tests across these six `iter059` timeout files) if behavior reproduces under full-run worker contention.
 
 4. Reduce `Suite/Failure` assertion mismatches.
 - Start with top files from the next full probe report.

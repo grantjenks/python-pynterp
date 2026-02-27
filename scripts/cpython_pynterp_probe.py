@@ -64,7 +64,13 @@ POLICY_BLOCKED_ATTR_NAMES = (
 # Keep per-file overrides narrow so probe timeout counts reflect real hangs.
 SLOW_TEST_TIMEOUT_OVERRIDES: dict[str, int] = {
     "Lib/test/test_asyncio/test_events.py": 25,
+    "Lib/test/test_asyncio/test_taskgroups.py": 25,
+    "Lib/test/test_concurrent_futures/test_as_completed.py": 25,
+    "Lib/test/test_concurrent_futures/test_process_pool.py": 40,
+    "Lib/test/test_concurrent_futures/test_shutdown.py": 25,
+    "Lib/test/test_concurrent_futures/test_thread_pool.py": 25,
     "Lib/test/test_queue.py": 25,
+    "Lib/test/test_isinstance.py": 40,
     "Lib/test/test_zipfile64.py": 90,
 }
 
