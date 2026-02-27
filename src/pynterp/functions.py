@@ -203,6 +203,11 @@ class BoundMethod:
     def __repr__(bound) -> str:
         return f"<bound method {bound._func!r} of {bound._self!r}>"
 
+    def __getattr__(bound, name: str) -> Any:
+        # Mirror native bound-method behavior: expose function metadata attrs
+        # like unittest's __unittest_expecting_failure__ markers.
+        return getattr(bound._func, name)
+
 
 class UserFunction:
     """

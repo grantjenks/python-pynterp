@@ -2686,6 +2686,37 @@ RESULT = (len(tests), tests[0] is testcase_1)
     assert env["RESULT"] == (1, True)
 
 
+def test_unittest_expected_failure_marker_on_user_function_method_is_honored():
+    source = """
+import io
+import unittest
+
+class MyTestCase(unittest.TestCase):
+    @unittest.expectedFailure
+    def test_expected(self):
+        self.fail("boom")
+
+suite = unittest.defaultTestLoader.loadTestsFromTestCase(MyTestCase)
+stream = io.StringIO()
+result = unittest.TextTestRunner(stream=stream, verbosity=0).run(suite)
+RESULT = (
+    len(result.failures),
+    len(result.errors),
+    len(result.expectedFailures),
+    len(result.unexpectedSuccesses),
+)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<unittest_expected_failure_user_function_method>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<unittest_expected_failure_user_function_method>")
+    assert env["RESULT"] == (0, 0, 1, 0)
+
+
 def test_asyncio_format_helpers_resolves_user_function_source():
     source = (
         "from asyncio import format_helpers\n\n"
