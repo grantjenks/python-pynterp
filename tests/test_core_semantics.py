@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import sys
 from pathlib import Path
 
 import pytest
@@ -1849,6 +1850,42 @@ RESULT = list(run())
 """
     env = run_interpreter(source)
     assert env["RESULT"] == [("value", ["ValueError"]), ("type", ["TypeError"])]
+
+
+def test_trystar_sys_exception_tracks_matched_subgroup(run_interpreter):
+    source = """
+try:
+    raise ExceptionGroup("mmu", [Exception("ex"), ValueError("v")])
+except* ValueError:
+    first = sys.exception()
+except* Exception:
+    second = sys.exception()
+
+RESULT = (
+    [type(item).__name__ for item in first.exceptions],
+    [type(item).__name__ for item in second.exceptions],
+)
+"""
+    env = run_interpreter(source, env={"sys": sys})
+    assert env["RESULT"] == (["ValueError"], ["Exception"])
+
+
+def test_trystar_generator_sys_exception_tracks_matched_subgroup(run_interpreter):
+    source = """
+def run():
+    try:
+        raise ExceptionGroup("mmu", [Exception("ex"), ValueError("v")])
+    except* ValueError:
+        first = sys.exception()
+        yield [type(item).__name__ for item in first.exceptions]
+    except* Exception:
+        second = sys.exception()
+        yield [type(item).__name__ for item in second.exceptions]
+
+RESULT = list(run())
+"""
+    env = run_interpreter(source, env={"sys": sys})
+    assert env["RESULT"] == [["ValueError"], ["Exception"]]
 
 
 def test_trystar_rejects_exceptiongroup_handler_type(run_interpreter):

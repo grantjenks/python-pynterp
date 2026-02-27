@@ -1213,13 +1213,18 @@ class StatementMixin:
                 if handler.name:
                     scope.store(handler.name, matched)
                 previous_exception = scope.active_exception
-                scope.active_exception = matched
                 try:
-                    self.exec_block(handler.body, scope)
-                except BaseException as new_e:
-                    if isinstance(new_e, ControlFlowSignal):
-                        raise
-                    raised.append(new_e)
+                    # Run handler bodies under the subgroup's active host
+                    # exception so sys.exception() matches CPython behavior.
+                    raise matched
+                except BaseException as current_exception:
+                    scope.active_exception = current_exception
+                    try:
+                        self.exec_block(handler.body, scope)
+                    except BaseException as new_e:
+                        if isinstance(new_e, ControlFlowSignal):
+                            raise
+                        raised.append(new_e)
                 finally:
                     scope.active_exception = previous_exception
                     if handler.name:
@@ -1688,13 +1693,17 @@ class StatementMixin:
                 if handler.name:
                     scope.store(handler.name, matched)
                 previous_exception = scope.active_exception
-                scope.active_exception = matched
                 try:
-                    yield from self.g_exec_block(handler.body, scope)
-                except BaseException as new_e:
-                    if isinstance(new_e, ControlFlowSignal):
-                        raise
-                    raised.append(new_e)
+                    # Mirror sys.exception() behavior for except* handlers.
+                    raise matched
+                except BaseException as current_exception:
+                    scope.active_exception = current_exception
+                    try:
+                        yield from self.g_exec_block(handler.body, scope)
+                    except BaseException as new_e:
+                        if isinstance(new_e, ControlFlowSignal):
+                            raise
+                        raised.append(new_e)
                 finally:
                     scope.active_exception = previous_exception
                     if handler.name:
