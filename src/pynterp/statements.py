@@ -99,6 +99,12 @@ class _AsyncForAwaitable:
 
 
 class StatementMixin:
+    def _store_definition_name(self, scope: RuntimeScope, name: str, value: Any) -> None:
+        scope.store(
+            self._mangle_private_name_for_owner(name, getattr(scope, "private_owner", None)),
+            value,
+        )
+
     def _mangle_private_name_for_owner(self, name: str, private_owner: str | None) -> str:
         if not private_owner or not isinstance(name, str):
             return name
@@ -464,7 +470,7 @@ class StatementMixin:
             type_params=type_params,
         )
 
-        scope.store(node.name.id, alias)
+        self._store_definition_name(scope, node.name.id, alias)
 
     def exec_Expr(self, node: ast.Expr, scope: RuntimeScope) -> None:
         self.eval_expr(node.value, scope)
@@ -951,7 +957,7 @@ class StatementMixin:
             dec = self.eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
 
     def exec_AsyncFunctionDef(self, node: ast.AsyncFunctionDef, scope: RuntimeScope) -> None:
         defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
@@ -972,7 +978,7 @@ class StatementMixin:
             dec = self.eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
 
     def exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> None:
         type_param_nodes = getattr(node, "type_params", ()) or ()
@@ -1036,7 +1042,7 @@ class StatementMixin:
             dec = self.eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
 
     def _except_star_targets_exception_group(self, exc_type: Any) -> bool:
         if isinstance(exc_type, tuple):
@@ -1460,7 +1466,7 @@ class StatementMixin:
             dec = yield from self.g_eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
         return
 
     def g_exec_AsyncFunctionDef(
@@ -1487,7 +1493,7 @@ class StatementMixin:
             dec = yield from self.g_eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
         return
 
     def g_exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> Iterator[Any]:
@@ -1553,7 +1559,7 @@ class StatementMixin:
             dec = yield from self.g_eval_expr(dec_node, scope)
             decorated = dec(decorated)
 
-        scope.store(node.name, decorated)
+        self._store_definition_name(scope, node.name, decorated)
         return
 
     def g_exec_Try(self, node: ast.Try, scope: RuntimeScope) -> Iterator[Any]:

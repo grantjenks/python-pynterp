@@ -212,14 +212,16 @@ class ExpressionMixin:
             return res
         raise NotImplementedError
 
-    def eval_Compare(self, node: ast.Compare, scope: RuntimeScope) -> bool:
+    def eval_Compare(self, node: ast.Compare, scope: RuntimeScope) -> Any:
         left = self.eval_expr(node.left, scope)
-        for op, comp in zip(node.ops, node.comparators):
+        result: Any = True
+        for index, (op, comp) in enumerate(zip(node.ops, node.comparators)):
             right = self.eval_expr(comp, scope)
-            if not self._apply_compare(op, left, right):
-                return False
+            result = self._apply_compare(op, left, right)
+            if index < len(node.ops) - 1 and not result:
+                return result
             left = right
-        return True
+        return result
 
     def eval_IfExp(self, node: ast.IfExp, scope: RuntimeScope) -> Any:
         return self.eval_expr(node.body if self.eval_expr(node.test, scope) else node.orelse, scope)
@@ -583,14 +585,16 @@ class ExpressionMixin:
             return res
         raise NotImplementedError
 
-    def g_eval_Compare(self, node: ast.Compare, scope: RuntimeScope) -> Iterator[bool]:
+    def g_eval_Compare(self, node: ast.Compare, scope: RuntimeScope) -> Iterator[Any]:
         left = yield from self.g_eval_expr(node.left, scope)
-        for op, comp in zip(node.ops, node.comparators):
+        result: Any = True
+        for index, (op, comp) in enumerate(zip(node.ops, node.comparators)):
             right = yield from self.g_eval_expr(comp, scope)
-            if not self._apply_compare(op, left, right):
-                return False
+            result = self._apply_compare(op, left, right)
+            if index < len(node.ops) - 1 and not result:
+                return result
             left = right
-        return True
+        return result
 
     def g_eval_IfExp(self, node: ast.IfExp, scope: RuntimeScope) -> Iterator[Any]:
         test = yield from self.g_eval_expr(node.test, scope)

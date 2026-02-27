@@ -96,6 +96,59 @@ fn()
         run_interpreter(source)
 
 
+def test_single_comparison_returns_rich_result_without_bool_coercion(run_interpreter):
+    source = """
+class Token:
+    def __bool__(self):
+        raise AssertionError("single comparison should not coerce to bool")
+
+token = Token()
+
+class C:
+    def __lt__(self, other):
+        return token
+
+RESULT = (C() < C()) is token
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] is True
+
+
+def test_chained_comparison_short_circuits_with_first_false_rich_result(run_interpreter):
+    source = """
+events = []
+
+class Token:
+    def __init__(self, name, truth):
+        self.name = name
+        self.truth = truth
+
+    def __bool__(self):
+        events.append(("bool", self.name))
+        return self.truth
+
+t1 = Token("t1", False)
+t2 = Token("t2", True)
+
+class C:
+    def __init__(self, name, result):
+        self.name = name
+        self.result = result
+
+    def __lt__(self, other):
+        events.append(("lt", self.name, other.name))
+        return self.result
+
+a = C("a", t1)
+b = C("b", t2)
+c = C("c", t2)
+result = a < b < c
+RESULT = (result is t1, events)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, [("lt", "a", "b"), ("bool", "t1")])
+
+
 def test_user_function_defaults_attributes_drive_call_binding(run_interpreter):
     source = """
 def f(a, b=2, /, c=3, *, d=4):
@@ -572,6 +625,22 @@ RESULT = C().f()
 """
     env = run_interpreter(source)
     assert env["RESULT"] == 6
+
+
+def test_class_private_method_definition_name_is_mangled(run_interpreter):
+    source = """
+class Vector:
+    def __cast(self, value):
+        return value + 1
+
+    def apply(self, value):
+        return self.__cast(value)
+
+v = Vector()
+RESULT = (v.apply(2), hasattr(Vector, "_Vector__cast"), hasattr(Vector, "__cast"))
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (3, True, False)
 
 
 @pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
