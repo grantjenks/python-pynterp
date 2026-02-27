@@ -7,6 +7,7 @@
 - Probe baseline source: CPython `origin/3.14` (`a58ea8c2123`)
 - Probe command: `scripts/cpython_pynterp_probe.py --basis tests --mode module`
 - Default unsupported filters: `__import__`, `__dict__`
+- Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter001.json`
 
 ## Compatibility Snapshot
 
@@ -22,12 +23,16 @@
 
 ### Latest full probe result recorded
 
-From the last full module probe artifact (`iter-009`):
+From full module/tests probe run on `2026-02-27` (`/tmp/pynterp-probe-tests-module-20260227-iter001.json`):
 
-- pass: `11,741`
-- skip: `1,307`
-- fail: `2,671`
-- pass+skip rate: `83.01%`
+- applicable files: `515 / 762` (`67.59%`)
+- estimated individual tests: `15,686`
+- pass: `12,665` (`+924` vs `iter-009`)
+- skip: `1,305` (`-2` vs `iter-009`)
+- fail: `1,716` (`-955` vs `iter-009`)
+- pass+skip rate: `89.06%` (`+6.05pp` vs `iter-009`)
+- top fail categories: `TIMEOUT (751)`, `ModuleNotFound/'_tkinter' (470)`, `Suite/Error (238)`, `Suite/Failure (173)`
+- top suite-error signatures: `when serializing pynterp.functions.UserFunction object (25)`, `__code__ blocked (22)`, `messages.po missing (15)`, `importlib.metadata missing (12)`, `_interpreters.run_func() arg 2 type mismatch (9)`
 
 ## Explicit Skip Policy
 
@@ -61,8 +66,9 @@ Use this section as the source of truth for intentional exclusions.
 
 ## Priority Backlog
 
-1. Re-run full CPython module-basis probe and refresh canonical metrics.
+1. [done] Re-run full CPython module-basis probe and refresh canonical metrics.
 - Done when: `TODO.md` snapshot is updated from a new full run (not targeted reruns), with top fail categories and top suite error signatures.
+- Progress (2026-02-27): Captured `/tmp/pynterp-probe-tests-module-20260227-iter001.json` and refreshed snapshot metrics/categories/signatures above.
 
 2. Reduce remaining `Suite/Error` bucket first.
 - Done when: top 10 current suite-error signatures each show clear net reduction in a full probe rerun.
