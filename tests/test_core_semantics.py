@@ -350,6 +350,34 @@ RESULT = (T_param.__name__, f(7), leaked)
     assert env["RESULT"] == ("T", 7, False)
 
 
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_nested_generic_function_can_capture_outer_type_param(run_interpreter):
+    source = """
+def make_generator[A]():
+    def generator[B]():
+        yield A
+        yield B
+    return generator
+
+gen = make_generator()
+a, b = [value for value in gen()]
+RESULT = (a.__name__, b.__name__, gen.__type_params__[0].__name__)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("A", "B", "B")
+
+
+@pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
+def test_typealias_lambda_can_capture_type_param(run_interpreter):
+    source = """
+type Alias[T] = lambda: T
+T_param, = Alias.__type_params__
+RESULT = Alias.__value__() is T_param
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] is True
+
+
 def test_async_function_def_returns_coroutine(run_interpreter):
     source = """
 async def add(x, y=3):

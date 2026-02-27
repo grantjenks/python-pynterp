@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterator
 
 from .common import (
     NO_DEFAULT,
+    UNBOUND,
     AwaitRequest,
     BreakSignal,
     Cell,
@@ -46,31 +47,46 @@ class _TypeAliasEvalScope(RuntimeScope):
         )
         self._base_scope = base_scope
         self._type_param_bindings = type_param_bindings
+        self._type_param_cells = {
+            name: Cell(value) for name, value in type_param_bindings.items()
+        }
 
     def load(self, name: str) -> Any:
-        if name in self._type_param_bindings:
-            return self._type_param_bindings[name]
+        type_param_cell = self._type_param_cells.get(name)
+        if type_param_cell is not None:
+            if type_param_cell.value is UNBOUND:
+                raise NameError(name)
+            return type_param_cell.value
         return self._base_scope.load(name)
 
     def store(self, name: str, value: Any) -> Any:
-        if name in self._type_param_bindings:
+        type_param_cell = self._type_param_cells.get(name)
+        if type_param_cell is not None:
+            type_param_cell.value = value
             self._type_param_bindings[name] = value
             return value
         return self._base_scope.store(name, value)
 
     def unbind(self, name: str) -> None:
-        if name in self._type_param_bindings:
-            del self._type_param_bindings[name]
+        type_param_cell = self._type_param_cells.get(name)
+        if type_param_cell is not None:
+            type_param_cell.value = UNBOUND
+            self._type_param_bindings.pop(name, None)
             return
         self._base_scope.unbind(name)
 
     def delete(self, name: str) -> None:
-        if name in self._type_param_bindings:
-            del self._type_param_bindings[name]
+        type_param_cell = self._type_param_cells.get(name)
+        if type_param_cell is not None:
+            type_param_cell.value = UNBOUND
+            self._type_param_bindings.pop(name, None)
             return
         self._base_scope.delete(name)
 
     def capture_cell(self, name: str) -> Cell:
+        type_param_cell = self._type_param_cells.get(name)
+        if type_param_cell is not None:
+            return type_param_cell
         return self._base_scope.capture_cell(name)
 
 
@@ -595,8 +611,19 @@ class StatementMixin:
 
         fn_table = scope.code.lookup_function_table(node)
         fn_scope_info = scope.code.scope_info_for(fn_table)
-        closure = {name: scope.capture_cell(name) for name in fn_scope_info.frees}
-        type_params = self._build_type_params(getattr(node, "type_params", ()) or (), scope)
+        type_param_nodes = getattr(node, "type_params", ()) or ()
+        type_params = self._build_type_params(type_param_nodes, scope)
+        type_param_bindings = {
+            type_param_node.name: type_param
+            for type_param_node, type_param in zip(type_param_nodes, type_params)
+        }
+        closure: Dict[str, Cell] = {}
+        for free_name in fn_scope_info.frees:
+            type_param = type_param_bindings.get(free_name, _MISSING)
+            if type_param is not _MISSING:
+                closure[free_name] = Cell(type_param)
+                continue
+            closure[free_name] = scope.capture_cell(free_name)
 
         return UserFunction(
             interpreter=self,
