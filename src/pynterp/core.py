@@ -10,6 +10,7 @@ from pynterp.lib import (
     import_safe_stdlib_module,
     make_safe_env,
 )
+from pynterp.lib.compat import maybe_patch_runtime_module
 
 from .code import ModuleCode
 from .scopes import ModuleScope, RuntimeScope
@@ -52,14 +53,18 @@ class InterpreterCore:
         module = import_safe_stdlib_module(name)
         # Match __import__ behavior: without fromlist, return the top-level package.
         if not fromlist and "." in name:
-            return import_safe_stdlib_module(name.split(".", 1)[0])
-        return module
+            return self._adapt_runtime_value(import_safe_stdlib_module(name.split(".", 1)[0]))
+        return self._adapt_runtime_value(module)
+
+    def _adapt_runtime_value(self, value: Any) -> Any:
+        return maybe_patch_runtime_module(value)
 
     def _import(self, name: str, scope: RuntimeScope, fromlist=(), level=0):
         imp = scope.builtins.get("__import__")
         if imp is None or not callable(imp):
             raise ImportError("__import__ is not available in this environment")
-        return imp(name, scope.globals, scope.globals, fromlist, level)
+        value = imp(name, scope.globals, scope.globals, fromlist, level)
+        return self._adapt_runtime_value(value)
 
     def make_default_env(
         self,

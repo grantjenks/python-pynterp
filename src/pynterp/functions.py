@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import importlib
 from typing import TYPE_CHECKING, Any, Dict
 
@@ -23,6 +24,68 @@ def _resolve_qualname_attr(obj: Any, qualname: str) -> Any:
 def _load_user_function_global(module_name: str, qualname: str) -> Any:
     module = importlib.import_module(module_name)
     return _resolve_qualname_attr(module, qualname)
+
+
+def _contains_non_none_return(fn_node: ast.FunctionDef) -> bool:
+    class ReturnVisitor(ast.NodeVisitor):
+        def __init__(self):
+            self.found = False
+
+        def visit_Return(self, node: ast.Return) -> None:
+            if node.value is None:
+                return
+            if isinstance(node.value, ast.Constant) and node.value.value is None:
+                return
+            self.found = True
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            return
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            return
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            return
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            return
+
+    visitor = ReturnVisitor()
+    for stmt in fn_node.body:
+        visitor.visit(stmt)
+        if visitor.found:
+            return True
+    return False
+
+
+def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:
+    """Convert an interpreted function into a native function for _interpreters.run_func()."""
+    node = func.node
+    if not isinstance(node, ast.FunctionDef):
+        raise ValueError("_interpreters.run_func() requires a function defined with 'def'")
+    if func.is_generator or func.is_async or func.is_async_generator:
+        raise ValueError("_interpreters.run_func() does not support generators or async functions")
+    if func.closure:
+        raise ValueError("_interpreters.run_func() does not support closures")
+
+    args = node.args
+    has_args = bool(args.posonlyargs or args.args or args.vararg or args.kwonlyargs or args.kwarg)
+    if has_args:
+        raise ValueError("_interpreters.run_func() requires a function that takes no arguments")
+    if _contains_non_none_return(node):
+        raise ValueError("_interpreters.run_func() does not support non-None return values")
+
+    cloned = copy.deepcopy(node)
+    cloned.name = "__pynterp_run_func_target__"
+    cloned.decorator_list = []
+    module = ast.Module(body=[cloned], type_ignores=[])
+    ast.fix_missing_locations(module)
+
+    namespace = dict(func.globals)
+    namespace.setdefault("__builtins__", func.builtins)
+    compiled = compile(module, func.code.filename, "exec")
+    exec(compiled, namespace, namespace)
+    return namespace[cloned.name]
 
 
 class BoundMethod:

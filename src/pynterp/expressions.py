@@ -224,6 +224,7 @@ class ExpressionMixin:
             result = func(*args, **kwargs)
         else:
             result = func(*args)
+        result = self._adapt_runtime_value(result)
         return self._maybe_fix_typing_runtime_module(func, result, scope)
 
     def eval_List(self, node: ast.List, scope: RuntimeScope) -> list:

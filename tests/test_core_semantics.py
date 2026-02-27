@@ -1308,6 +1308,71 @@ RESULT = (
     assert env["RESULT"] == ("importlib", "importlib.metadata", True, True, False)
 
 
+def test_interpreters_run_func_accepts_interpreted_function():
+    pytest.importorskip("_interpreters")
+    source = """
+from test.support import import_helper
+import os
+
+_interpreters = import_helper.import_module("_interpreters")
+interp = _interpreters.create()
+r, w = os.pipe()
+
+def script():
+    global w
+    import contextlib
+    with open(w, "w", encoding="utf-8") as spipe:
+        with contextlib.redirect_stdout(spipe):
+            print("it worked!", end="")
+
+try:
+    _interpreters.set___main___attrs(interp, dict(w=w))
+    _interpreters.run_func(interp, script)
+    with open(r, encoding="utf-8") as outfile:
+        RESULT = outfile.read()
+finally:
+    _interpreters.destroy(interp)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<interpreters_run_func_ok>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<interpreters_run_func_ok>")
+    assert env["RESULT"] == "it worked!"
+
+
+def test_interpreters_run_func_rejects_interpreted_function_with_args():
+    pytest.importorskip("_interpreters")
+    source = """
+from test.support import import_helper
+
+_interpreters = import_helper.import_module("_interpreters")
+interp = _interpreters.create()
+
+def script(arg):
+    return arg
+
+try:
+    _interpreters.run_func(interp, script)
+except Exception as exc:
+    RESULT = (type(exc).__name__, str(exc))
+finally:
+    _interpreters.destroy(interp)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<interpreters_run_func_args>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<interpreters_run_func_args>")
+    assert env["RESULT"][0] == "ValueError"
+
+
 @pytest.mark.skipif(not HAS_TEMPLATE_STR, reason="TemplateStr requires Python 3.14+")
 def test_templatestr_builds_template_with_interpolation_metadata(run_interpreter):
     source = """
