@@ -2072,6 +2072,75 @@ RESULT = (signature_text, "()</dt>" in doc)
     assert env["RESULT"] == ("()", True)
 
 
+def test_unittest_loader_loads_user_function_test_method_without_calling_it():
+    source = """
+import types
+import unittest
+
+m = types.ModuleType("m")
+
+class MyTestCase(unittest.TestCase):
+    test = lambda: 1
+
+m.testcase_1 = MyTestCase
+loader = unittest.TestLoader()
+suite = loader.loadTestsFromNames(["testcase_1.test"], m)
+inner = list(suite)[0]
+tests = list(inner)
+RESULT = (
+    isinstance(suite, loader.suiteClass),
+    len(tests),
+    type(tests[0]).__name__,
+    tests[0]._testMethodName,
+)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<unittest_loader_user_function_method>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<unittest_loader_user_function_method>")
+    assert env["RESULT"] == (True, 1, "MyTestCase", "test")
+
+
+def test_unittest_loader_keeps_staticmethod_callable_path():
+    source = """
+import types
+import unittest
+
+m = types.ModuleType("m")
+
+class Test1(unittest.TestCase):
+    def test(self):
+        pass
+
+testcase_1 = Test1("test")
+
+class Foo(unittest.TestCase):
+    @staticmethod
+    def foo():
+        return testcase_1
+
+m.Foo = Foo
+loader = unittest.TestLoader()
+suite = loader.loadTestsFromNames(["Foo.foo"], m)
+inner = list(suite)[0]
+tests = list(inner)
+RESULT = (len(tests), tests[0] is testcase_1)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<unittest_loader_user_function_staticmethod>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<unittest_loader_user_function_staticmethod>")
+    assert env["RESULT"] == (1, True)
+
+
 def test_asyncio_format_helpers_resolves_user_function_source():
     source = (
         "from asyncio import format_helpers\n\n"

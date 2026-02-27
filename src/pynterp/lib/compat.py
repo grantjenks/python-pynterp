@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import types
 from types import ModuleType
 from typing import Any
 
@@ -109,6 +110,82 @@ def _patch_asyncio_format_helpers_get_function_source(module: ModuleType) -> Non
     setattr(module, "_get_function_source", get_function_source_wrapper)
 
 
+def _resolve_unittest_name_target(name: Any, module: Any) -> tuple[Any, Any, str] | None:
+    if not isinstance(name, str) or not name or module is None:
+        return None
+
+    parts = name.split(".")
+    if any(not part for part in parts):
+        return None
+
+    obj = module
+    parent: Any | None = None
+    for part in parts:
+        try:
+            parent, obj = obj, getattr(obj, part)
+        except Exception:
+            return None
+
+    if parent is None:
+        return None
+    return parent, obj, parts[-1]
+
+
+def _suite_for_user_function_test_method(loader: Any, name: Any, module: Any) -> Any | None:
+    from pynterp.functions import UserFunction
+    import unittest.case as unittest_case
+
+    resolved = _resolve_unittest_name_target(name, module)
+    if resolved is None:
+        return None
+    parent, obj, method_name = resolved
+
+    if not isinstance(obj, UserFunction):
+        return None
+    if not isinstance(parent, type):
+        return None
+    if not issubclass(parent, unittest_case.TestCase):
+        return None
+
+    try:
+        instance = parent(method_name)
+        bound = getattr(instance, method_name)
+    except Exception:
+        return None
+
+    # Match unittest.loader behavior: static methods should fall through to
+    # callable handling, while bound test methods become a one-item suite.
+    if isinstance(bound, (types.FunctionType, UserFunction)):
+        return None
+    return loader.suiteClass([instance])
+
+
+def _patch_unittest_loader_load_tests_from_name(module: ModuleType) -> None:
+    test_loader = getattr(module, "TestLoader", None)
+    if not isinstance(test_loader, type):
+        return
+
+    original = getattr(test_loader, "loadTestsFromName", None)
+    if not callable(original):
+        return
+    if getattr(original, "__pynterp_userfunction_testmethod_adapter__", False):
+        return
+
+    def load_tests_from_name_wrapper(self: Any, name: str, module: Any = None):
+        suite = _suite_for_user_function_test_method(self, name, module)
+        if suite is not None:
+            return suite
+        return original(self, name, module)
+
+    load_tests_from_name_wrapper.__name__ = getattr(original, "__name__", "loadTestsFromName")
+    load_tests_from_name_wrapper.__qualname__ = getattr(
+        original, "__qualname__", "loadTestsFromName"
+    )
+    load_tests_from_name_wrapper.__doc__ = getattr(original, "__doc__", None)
+    setattr(load_tests_from_name_wrapper, "__pynterp_userfunction_testmethod_adapter__", True)
+    setattr(test_loader, "loadTestsFromName", load_tests_from_name_wrapper)
+
+
 def maybe_patch_runtime_module(value: Any) -> Any:
     if not isinstance(value, ModuleType):
         return value
@@ -120,4 +197,10 @@ def maybe_patch_runtime_module(value: Any) -> Any:
         format_helpers = getattr(value, "format_helpers", None)
         if isinstance(format_helpers, ModuleType):
             _patch_asyncio_format_helpers_get_function_source(format_helpers)
+    if value.__name__ == "unittest.loader":
+        _patch_unittest_loader_load_tests_from_name(value)
+    if value.__name__ == "unittest":
+        loader_module = getattr(value, "loader", None)
+        if isinstance(loader_module, ModuleType):
+            _patch_unittest_loader_load_tests_from_name(loader_module)
     return value
