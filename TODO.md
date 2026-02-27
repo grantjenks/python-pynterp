@@ -6,7 +6,7 @@
 - Full local test suite: `83 passed, 3 skipped`
 - Probe baseline source: CPython `origin/3.14` (`a58ea8c2123`)
 - Probe command: `scripts/cpython_pynterp_probe.py --basis tests --mode module`
-- Default unsupported filters: `__import__`, `__dict__`
+- Default unsupported filters: `__import__`, `__dict__`, `__code__`
 - Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter001.json`
 
 ## Compatibility Snapshot
@@ -42,6 +42,7 @@ Use this section as the source of truth for intentional exclusions.
 
 - `\b__import__\b`
 - `\b__dict__\b`
+- `\b__code__\b`
 
 ### Explicitly out of scope (current)
 
@@ -224,6 +225,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "exec_builtin_uses_interpreted_function_scope_locals or exec_with_explicit_globals_locals_uses_runtime_annotation_thunk or eval_builtin_uses_interpreted_function_scope_locals" -q` => `3 passed, 127 deselected`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `6 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_grammar.py`): suite `errors` `3 -> 2` (`-1`) with `failures` unchanged at `1`; eliminated non-policy suite-error signature `KeyError: '__annotate__'` (`1 -> 0`), leaving only policy-bound `__code__` errors (`2`).
 - Expected full-probe delta on next rerun: `Suite/Error` should decrease by at least `1` from `Lib/test/test_grammar.py` by removing `__annotate__` lookup failure in `test_var_annot_simple_exec`.
+- Progress (2026-02-27, iter 042): Aligned probe defaults with the documented sandbox boundary by adding `\b__code__\b` to `DEFAULT_UNSUPPORTED_PATTERNS` and added probe regressions to enforce the new default skip behavior.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "dunder_code or default_unsupported" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `8 passed` (`+2 passed` vs iter 041 from new `__code__`-policy coverage).
+- Targeted CPython 3.14 diagnostics (`run_case` sampling across 31 historical suite-error files): remaining suite errors were entirely policy-bound (`__code__` blocked), with `20` `Suite/Error` cases across `10` files and `0` non-policy suite-error signatures in that sampled set.
+- Expected full-probe delta on next rerun: default-run `Suite/Error` should drop by at least the sampled policy-bound `__code__` contribution (`-20` in the 31-file sample), with those files reclassified under unsupported-source skip policy.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
@@ -233,8 +238,9 @@ Use this section as the source of truth for intentional exclusions.
 - Start with top files from the next full probe report.
 - Done when: full-probe `Suite/Failure` category count decreases.
 
-5. Decide and document long-term sandbox compatibility policy for blocked attrs.
-- Current explicit skips include `__import__` and `__dict__` in probe filters.
+5. [done] Decide and document long-term sandbox compatibility policy for blocked attrs.
+- Current explicit skips include `__import__`, `__dict__`, and `__code__` in probe filters.
+- Progress (2026-02-27, iter 042): Added `\b__code__\b` to probe default unsupported filters, updated docs/status text, and added regression tests that enforce classify-time exclusion for `__code__` test sources.
 - Done when: policy is explicit for `__code__`-adjacent introspection and reflected in probe filters/tests.
 
 ## Guardrails

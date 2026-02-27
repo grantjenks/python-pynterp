@@ -55,6 +55,7 @@ Probe script:
 Default unsupported filters in probe:
 - `__import__`
 - `__dict__`
+- `__code__`
 
 Baseline run (CPython `origin/3.14`, built interpreter at `/tmp/cpython-3.14/python.exe`):
 

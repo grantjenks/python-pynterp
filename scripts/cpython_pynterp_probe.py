@@ -28,6 +28,7 @@ CPYTHON_IMPL_PATTERNS = (
 DEFAULT_UNSUPPORTED_PATTERNS = (
     r"\b__import__\b",
     r"\b__dict__\b",
+    r"\b__code__\b",
 )
 
 RESULT_MARKER = "__PYNTERP_PROBE_JSON__"
@@ -268,7 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-default-unsupported",
         action="store_true",
-        help="Disable default unsupported filters (__import__, __dict__).",
+        help="Disable default unsupported filters (__import__, __dict__, __code__).",
     )
     parser.add_argument(
         "--top-files-per-category",

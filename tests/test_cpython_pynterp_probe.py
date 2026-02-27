@@ -273,3 +273,37 @@ class LiveBuiltinsCase(unittest.TestCase):
     assert payload["tests_run"] == 1
     assert payload["failures"] == 0
     assert payload["errors"] == 0
+
+
+def test_default_unsupported_patterns_include_dunder_code() -> None:
+    probe = load_probe_module()
+    assert r"\b__code__\b" in probe.DEFAULT_UNSUPPORTED_PATTERNS
+
+
+def test_classify_applicability_excludes_dunder_code_by_default(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    test_root = cpython_root / "Lib" / "test"
+    test_root.mkdir(parents=True)
+    test_path = test_root / "test_dunder_code_policy.py"
+    test_path.write_text(
+        """
+def test_policy():
+    return (lambda: None).__code__
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    test_files = probe.discover_test_files(cpython_root)
+    applicable, excluded = probe.classify_applicability(
+        test_files,
+        test_root,
+        impl_detail_patterns=probe.compile_source_patterns(probe.CPYTHON_IMPL_PATTERNS),
+        unsupported_patterns=probe.compile_source_patterns(probe.DEFAULT_UNSUPPORTED_PATTERNS),
+    )
+
+    assert applicable == []
+    assert len(excluded) == 1
+    assert excluded[0].path == test_path
+    assert "__code__" in excluded[0].reason
