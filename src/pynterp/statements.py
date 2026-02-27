@@ -1077,11 +1077,13 @@ class StatementMixin:
         raise py_builtins.BaseExceptionGroup("", members)
 
     def exec_Try(self, node: ast.Try, scope: RuntimeScope) -> None:
+        finalbody_exception = scope.active_exception
         try:
             self.exec_block(node.body, scope)
         except BaseException as e:
             if isinstance(e, ControlFlowSignal):
                 raise
+            finalbody_exception = e
             handled = False
             for handler in node.handlers:
                 if handler.type is None:
@@ -1097,6 +1099,16 @@ class StatementMixin:
                     scope.active_exception = e
                     try:
                         self.exec_block(handler.body, scope)
+                    except ControlFlowSignal:
+                        # Returning/breaking/continuing from an except handler
+                        # clears the in-flight exception before finally runs.
+                        finalbody_exception = previous_exception
+                        raise
+                    except BaseException as handler_exc:
+                        finalbody_exception = handler_exc
+                        raise
+                    else:
+                        finalbody_exception = e
                     finally:
                         scope.active_exception = previous_exception
                         if handler.name:
@@ -1106,10 +1118,20 @@ class StatementMixin:
                 raise
         else:
             if node.orelse:
-                self.exec_block(node.orelse, scope)
+                try:
+                    self.exec_block(node.orelse, scope)
+                except BaseException as orelse_exc:
+                    if not isinstance(orelse_exc, ControlFlowSignal):
+                        finalbody_exception = orelse_exc
+                    raise
         finally:
             if node.finalbody:
-                self.exec_block(node.finalbody, scope)
+                previous_exception = scope.active_exception
+                scope.active_exception = finalbody_exception
+                try:
+                    self.exec_block(node.finalbody, scope)
+                finally:
+                    scope.active_exception = previous_exception
 
     def exec_TryStar(self, node: ast.TryStar, scope: RuntimeScope) -> None:
         try:
@@ -1529,11 +1551,13 @@ class StatementMixin:
         return
 
     def g_exec_Try(self, node: ast.Try, scope: RuntimeScope) -> Iterator[Any]:
+        finalbody_exception = scope.active_exception
         try:
             yield from self.g_exec_block(node.body, scope)
         except BaseException as e:
             if isinstance(e, ControlFlowSignal):
                 raise
+            finalbody_exception = e
             handled = False
             for handler in node.handlers:
                 if handler.type is None:
@@ -1549,6 +1573,16 @@ class StatementMixin:
                     scope.active_exception = e
                     try:
                         yield from self.g_exec_block(handler.body, scope)
+                    except ControlFlowSignal:
+                        # Returning/breaking/continuing from an except handler
+                        # clears the in-flight exception before finally runs.
+                        finalbody_exception = previous_exception
+                        raise
+                    except BaseException as handler_exc:
+                        finalbody_exception = handler_exc
+                        raise
+                    else:
+                        finalbody_exception = e
                     finally:
                         scope.active_exception = previous_exception
                         if handler.name:
@@ -1558,10 +1592,20 @@ class StatementMixin:
                 raise
         else:
             if node.orelse:
-                yield from self.g_exec_block(node.orelse, scope)
+                try:
+                    yield from self.g_exec_block(node.orelse, scope)
+                except BaseException as orelse_exc:
+                    if not isinstance(orelse_exc, ControlFlowSignal):
+                        finalbody_exception = orelse_exc
+                    raise
         finally:
             if node.finalbody:
-                yield from self.g_exec_block(node.finalbody, scope)
+                previous_exception = scope.active_exception
+                scope.active_exception = finalbody_exception
+                try:
+                    yield from self.g_exec_block(node.finalbody, scope)
+                finally:
+                    scope.active_exception = previous_exception
         return
 
     def g_exec_TryStar(self, node: ast.TryStar, scope: RuntimeScope) -> Iterator[Any]:

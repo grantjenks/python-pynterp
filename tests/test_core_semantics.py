@@ -1394,6 +1394,56 @@ GEN = run()
         next(env["GEN"])
 
 
+def test_nested_function_bare_raise_reraises_caught_exception(run_interpreter):
+    source = """
+def nested():
+    raise
+
+def run():
+    try:
+        raise TypeError("boom")
+    except TypeError:
+        nested()
+
+run()
+"""
+    with pytest.raises(TypeError, match="boom"):
+        run_interpreter(source)
+
+
+def test_bare_raise_in_finally_reraises_current_try_exception(run_interpreter):
+    source = """
+def run():
+    try:
+        raise TypeError("outer")
+    except TypeError:
+        try:
+            raise KeyError("inner")
+        finally:
+            raise
+
+run()
+"""
+    with pytest.raises(KeyError, match="inner"):
+        run_interpreter(source, env={"TypeError": TypeError, "KeyError": KeyError})
+
+
+def test_bare_raise_in_finally_after_except_return_has_no_active_exception(run_interpreter):
+    source = """
+def run():
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        return "handled"
+    finally:
+        raise
+
+run()
+"""
+    with pytest.raises(RuntimeError, match="No active exception to reraise"):
+        run_interpreter(source)
+
+
 def test_raise_from_none_suppresses_context(run_interpreter):
     source = """
 try:

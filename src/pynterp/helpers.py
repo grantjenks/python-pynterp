@@ -554,6 +554,8 @@ class HelperMixin:
             qualname=func_obj.__qualname__,
             private_owner=func_obj._private_owner,
         )
+        if _PY_HASATTR(self, "_call_stack") and self._call_stack:
+            call_scope.active_exception = self._call_stack[-1][1].active_exception
 
         def is_bound(name: str) -> bool:
             if name in si.cellvars:
