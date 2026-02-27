@@ -120,6 +120,35 @@ class StatementMixin:
             },
         )
 
+    def _eval_class_bases(self, base_nodes: Sequence[ast.expr], scope: RuntimeScope) -> tuple[Any, ...]:
+        bases: list[Any] = []
+        for base_node in base_nodes:
+            if isinstance(base_node, ast.Starred):
+                bases.extend(self.eval_expr(base_node.value, scope))
+            else:
+                bases.append(self.eval_expr(base_node, scope))
+        return tuple(bases)
+
+    def _g_eval_class_bases(
+        self, base_nodes: Sequence[ast.expr], scope: RuntimeScope
+    ) -> Iterator[tuple[Any, ...]]:
+        bases: list[Any] = []
+        for base_node in base_nodes:
+            if isinstance(base_node, ast.Starred):
+                bases.extend((yield from self.g_eval_expr(base_node.value, scope)))
+            else:
+                bases.append((yield from self.g_eval_expr(base_node, scope)))
+        return tuple(bases)
+
+    def _generic_base_for_type_params(self, type_params: tuple[Any, ...]) -> Any:
+        generic_params: list[Any] = []
+        for type_param in type_params:
+            if isinstance(type_param, py_typing.TypeVarTuple):
+                generic_params.append(next(iter(type_param)))
+            else:
+                generic_params.append(type_param)
+        return py_typing.Generic[tuple(generic_params)]
+
     def _build_type_param(
         self, node: ast.AST, scope: RuntimeScope, type_param_bindings: Dict[str, Any]
     ) -> Any:
@@ -726,14 +755,26 @@ class StatementMixin:
         scope.store(node.name, decorated)
 
     def exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> None:
-        orig_bases = tuple(self.eval_expr(b, scope) for b in node.bases)
+        type_param_nodes = getattr(node, "type_params", ()) or ()
+        type_params = self._build_type_params(type_param_nodes, scope)
+        type_param_bindings = {
+            type_param_node.name: type_param
+            for type_param_node, type_param in zip(type_param_nodes, type_params)
+        }
+        eval_scope: RuntimeScope = (
+            _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
+        )
+
+        orig_bases = self._eval_class_bases(node.bases, eval_scope)
+        if type_params:
+            orig_bases = (*orig_bases, self._generic_base_for_type_params(type_params))
         bases = tuple(py_types.resolve_bases(orig_bases))
         kw: Dict[str, Any] = {}
         for k in node.keywords:
             if k.arg is None:
-                kw.update(self.eval_expr(k.value, scope))
+                kw.update(self.eval_expr(k.value, eval_scope))
             else:
-                kw[k.arg] = self.eval_expr(k.value, scope)
+                kw[k.arg] = self.eval_expr(k.value, eval_scope)
 
         meta = kw.pop("metaclass", None)
         if meta is None:
@@ -742,6 +783,8 @@ class StatementMixin:
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
         class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
+        if type_params:
+            class_ns.setdefault("__type_params__", type_params)
         if bases != orig_bases:
             class_ns.setdefault("__orig_bases__", orig_bases)
         class_cell = Cell()
@@ -1198,16 +1241,26 @@ class StatementMixin:
         return
 
     def g_exec_ClassDef(self, node: ast.ClassDef, scope: RuntimeScope) -> Iterator[Any]:
-        orig_bases: list[Any] = []
-        for b in node.bases:
-            orig_bases.append((yield from self.g_eval_expr(b, scope)))
-        bases = tuple(py_types.resolve_bases(tuple(orig_bases)))
+        type_param_nodes = getattr(node, "type_params", ()) or ()
+        type_params = self._build_type_params(type_param_nodes, scope)
+        type_param_bindings = {
+            type_param_node.name: type_param
+            for type_param_node, type_param in zip(type_param_nodes, type_params)
+        }
+        eval_scope: RuntimeScope = (
+            _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
+        )
+
+        orig_bases = yield from self._g_eval_class_bases(node.bases, eval_scope)
+        if type_params:
+            orig_bases = (*orig_bases, self._generic_base_for_type_params(type_params))
+        bases = tuple(py_types.resolve_bases(orig_bases))
         kw: Dict[str, Any] = {}
         for k in node.keywords:
             if k.arg is None:
-                kw.update((yield from self.g_eval_expr(k.value, scope)))
+                kw.update((yield from self.g_eval_expr(k.value, eval_scope)))
             else:
-                kw[k.arg] = yield from self.g_eval_expr(k.value, scope)
+                kw[k.arg] = yield from self.g_eval_expr(k.value, eval_scope)
 
         meta = kw.pop("metaclass", None)
         if meta is None:
@@ -1216,8 +1269,10 @@ class StatementMixin:
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
         class_ns.setdefault("__qualname__", self._qualname_for_definition(node.name, scope))
-        if bases != tuple(orig_bases):
-            class_ns.setdefault("__orig_bases__", tuple(orig_bases))
+        if type_params:
+            class_ns.setdefault("__type_params__", type_params)
+        if bases != orig_bases:
+            class_ns.setdefault("__orig_bases__", orig_bases)
         class_cell = Cell()
 
         body_scope = ClassBodyScope(

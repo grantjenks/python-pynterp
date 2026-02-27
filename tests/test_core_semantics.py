@@ -214,6 +214,49 @@ RESULT = (issubclass(C, list), isinstance(C([1]), list), C.__class__ is type)
     assert env["RESULT"] == (True, True, True)
 
 
+def test_starred_generic_alias_class_base_unpacks_and_tracks_orig_bases(run_interpreter):
+    source = """
+bases = (list[int],)
+
+class C(*bases):
+    pass
+
+RESULT = (C.__bases__, C.__orig_bases__)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ((list,), (list[int],))
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_class_with_starred_bases_exposes_type_params(run_interpreter):
+    source = """
+class Base:
+    pass
+
+bases = (Base,)
+
+class C[T](*bases):
+    pass
+
+T_param, = C.__type_params__
+RESULT = (T_param.__name__, C.__bases__[0] is Base, C.__bases__[1].__name__)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("T", True, "Generic")
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_class_with_typevartuple_param_is_subscriptable(run_interpreter):
+    source = """
+class C[*Ts]:
+    pass
+
+RESULT = (C[int, str].__args__, C.__type_params__[0].__name__)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ((int, str), "Ts")
+
+
 def test_local_class_qualname_in_method_scope(run_interpreter):
     source = """
 class Outer:
