@@ -319,6 +319,18 @@ RESULT = (Alias[int].__args__, leaked)
     assert env["RESULT"] == ((int,), False)
 
 
+@pytest.mark.skipif(not HAS_TYPE_ALIAS, reason="TypeAlias requires Python 3.12+")
+def test_typevartuple_default_star_unpack_is_supported(run_interpreter):
+    source = """
+default = tuple[int, str]
+type Alias[*Ts = *default] = Ts
+Ts, = Alias.__type_params__
+RESULT = Ts.__default__
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == next(iter(tuple[int, str]))
+
+
 def test_user_function_exposes_empty_type_params_by_default(run_interpreter):
     source = """
 def f():

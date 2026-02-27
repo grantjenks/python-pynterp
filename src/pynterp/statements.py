@@ -99,6 +99,15 @@ class _AsyncForAwaitable:
 
 
 class StatementMixin:
+    def _eval_type_param_default(
+        self, node: ast.expr, scope: RuntimeScope
+    ) -> Any:
+        if isinstance(node, ast.Starred):
+            # Match compiler semantics for type-parameter defaults like `*Ts = *default`.
+            (value,) = self.eval_expr(node.value, scope)
+            return value
+        return self.eval_expr(node, scope)
+
     def _typing_runtime_call(self, scope: RuntimeScope, factory: Any, /, *args: Any, **kwargs: Any) -> Any:
         # Run typing factories under interpreted globals so `__module__` matches the interpreted module.
         return eval(
@@ -119,7 +128,7 @@ class StatementMixin:
         if isinstance(node, ast.TypeVar):
             kwargs: Dict[str, Any] = {}
             if node.default_value is not None:
-                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+                kwargs["default"] = self._eval_type_param_default(node.default_value, eval_scope)
             if node.bound is None:
                 return self._typing_runtime_call(scope, py_typing.TypeVar, node.name, **kwargs)
             if isinstance(node.bound, ast.Tuple):
@@ -133,13 +142,13 @@ class StatementMixin:
         if isinstance(node, ast.ParamSpec):
             kwargs: Dict[str, Any] = {}
             if node.default_value is not None:
-                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+                kwargs["default"] = self._eval_type_param_default(node.default_value, eval_scope)
             return self._typing_runtime_call(scope, py_typing.ParamSpec, node.name, **kwargs)
 
         if isinstance(node, ast.TypeVarTuple):
             kwargs: Dict[str, Any] = {}
             if node.default_value is not None:
-                kwargs["default"] = self.eval_expr(node.default_value, eval_scope)
+                kwargs["default"] = self._eval_type_param_default(node.default_value, eval_scope)
             return self._typing_runtime_call(scope, py_typing.TypeVarTuple, node.name, **kwargs)
 
         raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")

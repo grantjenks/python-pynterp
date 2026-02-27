@@ -103,6 +103,9 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "empty_annotations or annotations_capture_type_params" -q` => `2 passed, 77 deselected`; `uv run pytest tests/test_core_semantics.py -q` => `76 passed, 3 skipped`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_type_params.py`): suite `errors` `12 -> 11` (`-1`); suite-error signature `AttributeError: 'UserFunction' object has no attribute '__annotations__'` `1 -> 0`.
 - Expected full-probe delta on next rerun: suite-error signature `AttributeError: 'UserFunction' object has no attribute '__annotations__'` should remain at `0` (pending full-run measurement).
+- Progress (2026-02-27, iter 011): Added support for starred type-parameter defaults (e.g., `type Alias[*Ts = *default] = ...`) by evaluating `ast.Starred` defaults with single-target unpack semantics in `_build_type_param`.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "typevartuple_default_star_unpack_is_supported or typealias_statement_builds_runtime_alias_with_params" -q` => `2 passed`; `uv run pytest tests/test_core_semantics.py -q` => `77 passed, 3 skipped` (`+1 passed` vs iter 010 from new regression coverage).
+- Expected full-probe delta on next rerun: suite-error signature(s) caused by `NotImplementedError: Expression not supported: Starred` in type-parameter default evaluation should decrease (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
