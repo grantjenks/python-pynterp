@@ -314,7 +314,11 @@ def test_collect_policy_blocked_attrs_extracts_dunder_names() -> None:
     attrs = probe.collect_policy_blocked_attrs(
         [r"\b__code__\b", r"foo|__dict__", r"\bnot_a_dunder\b", r"\b__import__\b"]
     )
-    assert attrs == ("__code__", "__dict__", "__import__")
+    assert "__code__" in attrs
+    assert "__dict__" in attrs
+    assert "__import__" in attrs
+    assert "__globals__" in attrs
+    assert "f_globals" in attrs
 
 
 def test_split_policy_blocked_suite_errors_filters_policy_signatures() -> None:
@@ -333,6 +337,25 @@ def test_split_policy_blocked_suite_errors_filters_policy_signatures() -> None:
     assert supported_errors == 2
     assert policy_blocked_errors == 2
     assert filtered == [("RuntimeError: boom", 1)]
+
+
+def test_split_policy_blocked_suite_errors_filters_runtime_guard_attrs() -> None:
+    probe = load_probe_module()
+    signature_pairs = [
+        ("AttributeError: attribute access to 'f_globals' is blocked in this environment", 2),
+        ("AttributeError: attribute access to '__globals__' is blocked in this environment", 1),
+        ("TypeError: boom", 1),
+    ]
+    supported_errors, policy_blocked_errors, filtered = probe.split_policy_blocked_suite_errors(
+        total_errors=4,
+        signature_pairs=signature_pairs,
+        policy_blocked_attrs=set(probe.collect_policy_blocked_attrs([])),
+        reported_policy_blocked_errors=0,
+    )
+
+    assert supported_errors == 1
+    assert policy_blocked_errors == 3
+    assert filtered == [("TypeError: boom", 1)]
 
 
 def test_run_case_reports_policy_blocked_suite_errors(tmp_path: Path) -> None:

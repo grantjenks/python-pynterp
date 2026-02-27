@@ -34,6 +34,30 @@ DEFAULT_UNSUPPORTED_PATTERNS = (
 RESULT_MARKER = "__PYNTERP_PROBE_JSON__"
 BLOCKED_ATTRIBUTE_ERROR_PREFIX = "AttributeError: attribute access to '"
 BLOCKED_ATTRIBUTE_ERROR_SUFFIX = "' is blocked in this environment"
+# Keep this list aligned with `pynterp.lib.guards._BLOCKED_ATTR_NAMES` so probe
+# accounting consistently treats sandbox-policy blocked attrs as unsupported.
+POLICY_BLOCKED_ATTR_NAMES = (
+    "__base__",
+    "__builtins__",
+    "__closure__",
+    "__code__",
+    "__dict__",
+    "__getattr__",
+    "__getattribute__",
+    "__globals__",
+    "__import__",
+    "__mro__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__self__",
+    "__setattr__",
+    "__delattr__",
+    "__subclasses__",
+    "f_builtins",
+    "f_globals",
+    "f_locals",
+    "gi_frame",
+)
 
 RUNNER = rf"""
 from pathlib import Path
@@ -450,7 +474,7 @@ def extract_blocked_attribute(reason: str) -> str | None:
 
 
 def collect_policy_blocked_attrs(raw_patterns: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    attrs: set[str] = set()
+    attrs: set[str] = set(POLICY_BLOCKED_ATTR_NAMES)
     for pattern in raw_patterns:
         attrs.update(re.findall(r"__\w+__", pattern))
     return tuple(sorted(attrs))

@@ -237,6 +237,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "user_function_supports_weakref or functools_wraps_keeps_wrapper_behavior_for_user_function" -q` => `2 passed, 129 deselected`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_thread.py`): suite `errors` `1 -> 0` (`-1`) with `failures` unchanged at `0`; eliminated suite-error signature `TypeError: cannot create weak reference to 'UserFunction' object` (`1 -> 0`).
 - Expected full-probe delta on next rerun: `Suite/Error` should decrease by at least `1` from `Lib/test/test_thread.py` due interpreted callable weakref parity.
+- Progress (2026-02-27, iter 045): Expanded probe policy-blocked attr accounting to include the runtime sandbox blocked-attribute set (not just unsupported-regex dunder extraction), so blocked frame/global/closure pivots are reclassified out of supported `Suite/Error`.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "collect_policy_blocked_attrs or split_policy_blocked_suite_errors" -q` => `3 passed, 9 deselected`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `12 passed` (`+1 passed` vs iter 044 from new runtime-guard policy split coverage).
+- Targeted CPython 3.14 diagnostics (`run_case` + policy split): `Lib/test/test_importlib/test_spec.py` raw suite `errors` `2` with `policy_blocked_errors` `2` => supported `Suite/Error` `0` (`-2`); `Lib/test/test_free_threading/test_frame.py` raw suite `errors` `4` with `policy_blocked_errors` `4` => supported `Suite/Error` `0` (`-4`).
+- Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `6` from these two policy-only suites, with corresponding movement into `blocked_skip`/skip accounting.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
