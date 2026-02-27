@@ -32,6 +32,8 @@ DEFAULT_UNSUPPORTED_PATTERNS = (
 )
 
 RESULT_MARKER = "__PYNTERP_PROBE_JSON__"
+BLOCKED_ATTRIBUTE_ERROR_PREFIX = "AttributeError: attribute access to '"
+BLOCKED_ATTRIBUTE_ERROR_SUFFIX = "' is blocked in this environment"
 
 RUNNER = rf"""
 from pathlib import Path
@@ -51,6 +53,11 @@ mode = sys.argv[4]
 basis = sys.argv[5]
 modname = sys.argv[6]
 package = sys.argv[7]
+blocked_attr_json = sys.argv[8]
+try:
+    blocked_attr_names = set(json.loads(blocked_attr_json))
+except Exception:
+    blocked_attr_names = set()
 
 sys.path.insert(0, str(pynterp_src))
 sys.path.insert(0, str(lib_root))
@@ -175,10 +182,22 @@ def extract_error_signature(err_text):
     return "UnknownError"
 
 
+def extract_blocked_attribute(signature):
+    prefix = "{BLOCKED_ATTRIBUTE_ERROR_PREFIX}"
+    suffix = "{BLOCKED_ATTRIBUTE_ERROR_SUFFIX}"
+    if signature.startswith(prefix) and signature.endswith(suffix):
+        return signature[len(prefix) : -len(suffix)]
+    return None
+
+
 error_signature_counts = {{}}
+policy_blocked_errors = 0
 for _test, err_text in result.errors:
     signature = extract_error_signature(err_text)
     error_signature_counts[signature] = error_signature_counts.get(signature, 0) + 1
+    blocked_attr = extract_blocked_attribute(signature)
+    if blocked_attr is not None and blocked_attr in blocked_attr_names:
+        policy_blocked_errors += 1
 
 emit(
     {{
@@ -189,6 +208,7 @@ emit(
         "skipped": len(result.skipped),
         "expected_failures": len(result.expectedFailures),
         "unexpected_successes": len(result.unexpectedSuccesses),
+        "policy_blocked_errors": policy_blocked_errors,
         "error_signatures": sorted(
             error_signature_counts.items(),
             key=lambda item: (-item[1], item[0]),
@@ -423,6 +443,53 @@ def parse_error_signatures(raw_signatures: Any) -> list[tuple[str, int]]:
     return pairs
 
 
+def extract_blocked_attribute(reason: str) -> str | None:
+    if reason.startswith(BLOCKED_ATTRIBUTE_ERROR_PREFIX) and reason.endswith(BLOCKED_ATTRIBUTE_ERROR_SUFFIX):
+        return reason[len(BLOCKED_ATTRIBUTE_ERROR_PREFIX) : -len(BLOCKED_ATTRIBUTE_ERROR_SUFFIX)]
+    return None
+
+
+def collect_policy_blocked_attrs(raw_patterns: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    attrs: set[str] = set()
+    for pattern in raw_patterns:
+        attrs.update(re.findall(r"__\w+__", pattern))
+    return tuple(sorted(attrs))
+
+
+def split_policy_blocked_suite_errors(
+    *,
+    total_errors: int,
+    signature_pairs: list[tuple[str, int]],
+    policy_blocked_attrs: set[str],
+    reported_policy_blocked_errors: Any,
+) -> tuple[int, int, list[tuple[str, int]]]:
+    total = max(0, int(total_errors))
+    filtered_signatures: list[tuple[str, int]] = []
+    inferred_policy_blocked = 0
+
+    for signature, count in signature_pairs:
+        blocked_attr = extract_blocked_attribute(signature)
+        if blocked_attr is not None and blocked_attr in policy_blocked_attrs:
+            inferred_policy_blocked += count
+            continue
+        filtered_signatures.append((signature, count))
+
+    reported = 0
+    try:
+        reported = int(reported_policy_blocked_errors)
+    except (TypeError, ValueError):
+        reported = 0
+    if reported < 0:
+        reported = 0
+
+    policy_blocked = max(inferred_policy_blocked, reported)
+    if policy_blocked > total:
+        policy_blocked = total
+
+    supported_errors = total - policy_blocked
+    return supported_errors, policy_blocked, filtered_signatures
+
+
 def run_case(
     case: TestCase,
     *,
@@ -432,6 +499,7 @@ def run_case(
     mode: str,
     basis: str,
     timeout: int,
+    blocked_attrs: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     lib_root = cpython_root / "Lib"
     cmd = [
@@ -445,6 +513,7 @@ def run_case(
         basis,
         case.module_name,
         case.package_name,
+        json.dumps(sorted(set(blocked_attrs))),
     ]
     try:
         proc = subprocess.run(
@@ -496,6 +565,7 @@ def main() -> int:
 
     impl_detail_patterns = compile_source_patterns(CPYTHON_IMPL_PATTERNS)
     unsupported_patterns = compile_source_patterns(unsupported_raw_patterns)
+    policy_blocked_attrs = collect_policy_blocked_attrs(unsupported_raw_patterns)
 
     all_tests = discover_test_files(cpython_root)
     applicable, excluded = classify_applicability(
@@ -528,6 +598,7 @@ def main() -> int:
                 mode=args.mode,
                 basis=args.basis,
                 timeout=args.timeout,
+                blocked_attrs=policy_blocked_attrs,
             ): case
             for case in applicable
         }
@@ -570,9 +641,18 @@ def main() -> int:
                 skipped = int(payload.get("skipped", 0))
                 expected_failures = int(payload.get("expected_failures", 0))
                 unexpected_successes = int(payload.get("unexpected_successes", 0))
+                signature_pairs = parse_error_signatures(payload.get("error_signatures"))
+                supported_errors, policy_blocked_suite_errors, signature_pairs = (
+                    split_policy_blocked_suite_errors(
+                        total_errors=errors,
+                        signature_pairs=signature_pairs,
+                        policy_blocked_attrs=set(policy_blocked_attrs),
+                        reported_policy_blocked_errors=payload.get("policy_blocked_errors"),
+                    )
+                )
 
-                fail_tests = failures + errors + unexpected_successes
-                skip_tests = skipped + expected_failures
+                fail_tests = failures + supported_errors + unexpected_successes
+                skip_tests = skipped + expected_failures + policy_blocked_suite_errors
                 pass_tests = tests_run - fail_tests - skip_tests
                 if pass_tests < 0:
                     pass_tests = 0
@@ -582,6 +662,8 @@ def main() -> int:
                 individual_counts["fail"] += fail_tests
                 individual_counts["skip"] += skip_tests
                 individual_counts["discovered"] += tests_run
+                individual_counts["blocked_skip"] += policy_blocked_suite_errors
+                individual_counts["policy_blocked_suite_error"] += policy_blocked_suite_errors
 
                 if failures:
                     add_category(
@@ -591,21 +673,20 @@ def main() -> int:
                         case_path=case_path,
                         weight=failures,
                     )
-                if errors:
+                if supported_errors:
                     add_category(
                         category_counts=category_counts,
                         category_files=category_files,
                         category="Suite/Error",
                         case_path=case_path,
-                        weight=errors,
+                        weight=supported_errors,
                     )
-                    signature_pairs = parse_error_signatures(payload.get("error_signatures"))
                     if signature_pairs:
                         for signature, count in signature_pairs:
                             suite_error_signature_counts[signature] += count
                             suite_error_signature_files[signature].append(case_path)
                     else:
-                        suite_error_signature_counts["UnknownErrorSignature"] += errors
+                        suite_error_signature_counts["UnknownErrorSignature"] += supported_errors
                         suite_error_signature_files["UnknownErrorSignature"].append(case_path)
                 if unexpected_successes:
                     add_category(
@@ -709,6 +790,7 @@ def main() -> int:
             "skip": individual_counts["skip"],
             "blocked_fail": individual_counts["blocked_fail"],
             "blocked_skip": individual_counts["blocked_skip"],
+            "policy_blocked_suite_error": individual_counts["policy_blocked_suite_error"],
             "estimated_total": individual_total,
         }
         report["individual_percentages"] = {
@@ -749,6 +831,7 @@ def main() -> int:
         print(f"individual_fail: {it['fail']}")
         print(f"individual_blocked_fail: {it['blocked_fail']}")
         print(f"individual_blocked_skip: {it['blocked_skip']}")
+        print(f"individual_policy_blocked_suite_error: {it['policy_blocked_suite_error']}")
         print(f"pass_of_estimated_individual_pct: {ip['pass_of_estimated_total']:.2f}")
         print(
             "pass_plus_skip_of_estimated_individual_pct: "

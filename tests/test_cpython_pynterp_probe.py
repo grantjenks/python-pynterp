@@ -307,3 +307,70 @@ def test_policy():
     assert len(excluded) == 1
     assert excluded[0].path == test_path
     assert "__code__" in excluded[0].reason
+
+
+def test_collect_policy_blocked_attrs_extracts_dunder_names() -> None:
+    probe = load_probe_module()
+    attrs = probe.collect_policy_blocked_attrs(
+        [r"\b__code__\b", r"foo|__dict__", r"\bnot_a_dunder\b", r"\b__import__\b"]
+    )
+    assert attrs == ("__code__", "__dict__", "__import__")
+
+
+def test_split_policy_blocked_suite_errors_filters_policy_signatures() -> None:
+    probe = load_probe_module()
+    signature_pairs = [
+        ("AttributeError: attribute access to '__code__' is blocked in this environment", 2),
+        ("RuntimeError: boom", 1),
+    ]
+    supported_errors, policy_blocked_errors, filtered = probe.split_policy_blocked_suite_errors(
+        total_errors=4,
+        signature_pairs=signature_pairs,
+        policy_blocked_attrs={"__code__"},
+        reported_policy_blocked_errors=1,
+    )
+
+    assert supported_errors == 2
+    assert policy_blocked_errors == 2
+    assert filtered == [("RuntimeError: boom", 1)]
+
+
+def test_run_case_reports_policy_blocked_suite_errors(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    test_root = cpython_root / "Lib" / "test"
+    test_root.mkdir(parents=True)
+    test_path = test_root / "test_policy_blocked_suite_errors.py"
+    test_path.write_text(
+        """
+import unittest
+
+class PolicyBlockedCase(unittest.TestCase):
+    def test_blocked(self):
+        raise AttributeError("attribute access to '__code__' is blocked in this environment")
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    case = probe.TestCase(
+        path=test_path,
+        module_name="test_policy_blocked_suite_errors",
+        package_name="",
+        declared_tests=1,
+    )
+    payload = probe.run_case(
+        case,
+        cpython_root=cpython_root,
+        python_exe=Path(sys.executable),
+        pynterp_src=Path(__file__).resolve().parents[1] / "src",
+        mode="module",
+        basis="tests",
+        timeout=10,
+        blocked_attrs=("__code__",),
+    )
+
+    assert payload["status"] == "suite"
+    assert payload["tests_run"] == 1
+    assert payload["errors"] == 1
+    assert payload["policy_blocked_errors"] == 1
