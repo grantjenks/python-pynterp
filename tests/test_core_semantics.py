@@ -1743,6 +1743,27 @@ RESULT = (
     assert env["RESULT"] == ("importlib", "importlib.metadata", True, True, False)
 
 
+def test_asyncio_format_helpers_resolves_user_function_source():
+    source = (
+        "from asyncio import format_helpers\n\n"
+        "def _fakefunc(f):\n"
+        "    return f\n\n"
+        "SOURCE = format_helpers._get_function_source(_fakefunc)\n"
+        "TEXT = format_helpers._format_callback_source(_fakefunc, ())\n"
+    )
+    filename = "<asyncio_user_function_source>"
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": filename,
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename=filename)
+    assert env["SOURCE"] == (filename, 3)
+    assert env["TEXT"] == f"_fakefunc() at {filename}:3"
+
+
 def test_interpreters_run_func_accepts_interpreted_function():
     pytest.importorskip("_interpreters")
     source = """
