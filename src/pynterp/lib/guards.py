@@ -29,7 +29,6 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "gi_frame",
         "ag_frame",
         "tb_frame",
-        "tb_next",
     }
 )
 

@@ -1813,6 +1813,28 @@ except Exception as exc:
     )
 
 
+def test_attr_guard_allows_traceback_chain_navigation_with_tb_next(run_interpreter):
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    tb = exc.__traceback__
+    depth = 0
+    while tb is not None:
+        depth += 1
+        tb = tb.tb_next
+    RESULT = depth
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] >= 1
+
+
 def test_attr_guard_allows_coroutine_frame_and_f_back(run_interpreter):
     source = """
 async def compute():
