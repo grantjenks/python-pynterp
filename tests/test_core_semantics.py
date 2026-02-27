@@ -1394,6 +1394,53 @@ GEN = run()
         next(env["GEN"])
 
 
+def test_raise_from_none_suppresses_context(run_interpreter):
+    source = """
+try:
+    try:
+        raise TypeError("inner")
+    except TypeError:
+        raise ValueError("outer") from None
+except ValueError as exc:
+    RESULT = (
+        exc.__cause__,
+        exc.__suppress_context__,
+        type(exc.__context__).__name__,
+    )
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (None, True, "TypeError")
+
+
+def test_raise_from_invalid_cause_raises_typeerror(run_interpreter):
+    with pytest.raises(TypeError, match="exception cause"):
+        run_interpreter("raise IndexError from 5", env={"IndexError": IndexError})
+
+
+def test_raise_from_class_cause_sets_exception_cause(run_interpreter):
+    source = """
+try:
+    raise IndexError from KeyError
+except IndexError as exc:
+    RESULT = isinstance(exc.__cause__, KeyError)
+"""
+    env = run_interpreter(source, env={"IndexError": IndexError, "KeyError": KeyError})
+    assert env["RESULT"] is True
+
+
+def test_raise_from_invalid_cause_in_generator_path(run_interpreter):
+    source = """
+def run():
+    raise IndexError from 5
+    yield "unreachable"
+
+GEN = run()
+"""
+    env = run_interpreter(source, env={"IndexError": IndexError})
+    with pytest.raises(TypeError, match="exception cause"):
+        next(env["GEN"])
+
+
 def test_trystar_wraps_single_exception_in_group(run_interpreter):
     source = """
 try:

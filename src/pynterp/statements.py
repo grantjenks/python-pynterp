@@ -210,6 +210,31 @@ class StatementMixin:
                 generic_params.append(type_param)
         return py_typing.Generic[tuple(generic_params)]
 
+    def _coerce_raised_exception(self, exc: Any) -> BaseException:
+        if isinstance(exc, BaseException):
+            return exc
+        if isinstance(exc, type) and issubclass(exc, BaseException):
+            return exc()
+        raise TypeError("Can only raise exception instances or exception classes")
+
+    def _coerce_raise_cause(self, cause: Any) -> BaseException | None:
+        if cause is None:
+            return None
+        if isinstance(cause, BaseException):
+            return cause
+        if isinstance(cause, type) and issubclass(cause, BaseException):
+            return cause()
+        raise TypeError("exception causes must derive from BaseException")
+
+    def _raise_with_optional_cause(self, exc: Any, cause: Any = _MISSING) -> None:
+        raise_exc = self._coerce_raised_exception(exc)
+        if cause is _MISSING:
+            raise raise_exc
+        raise_cause = self._coerce_raise_cause(cause)
+        if raise_cause is None:
+            raise raise_exc from None
+        raise raise_exc from raise_cause
+
     def _build_type_param(
         self, node: ast.AST, scope: RuntimeScope, type_param_bindings: Dict[str, Any]
     ) -> Any:
@@ -1154,11 +1179,10 @@ class StatementMixin:
                 raise RuntimeError("No active exception to reraise")
             raise scope.active_exception
         exc = self.eval_expr(node.exc, scope)
-        if isinstance(exc, BaseException):
-            raise exc
-        if isinstance(exc, type) and issubclass(exc, BaseException):
-            raise exc()
-        raise TypeError("Can only raise exception instances or exception classes")
+        if node.cause is None:
+            self._raise_with_optional_cause(exc)
+        cause = self.eval_expr(node.cause, scope)
+        self._raise_with_optional_cause(exc, cause)
 
     def exec_With(self, node: ast.With, scope: RuntimeScope) -> None:
         exits = []
@@ -1608,11 +1632,10 @@ class StatementMixin:
                 raise RuntimeError("No active exception to reraise")
             raise scope.active_exception
         exc = yield from self.g_eval_expr(node.exc, scope)
-        if isinstance(exc, BaseException):
-            raise exc
-        if isinstance(exc, type) and issubclass(exc, BaseException):
-            raise exc()
-        raise TypeError("Can only raise exception instances or exception classes")
+        if node.cause is None:
+            self._raise_with_optional_cause(exc)
+        cause = yield from self.g_eval_expr(node.cause, scope)
+        self._raise_with_optional_cause(exc, cause)
 
     def g_exec_With(self, node: ast.With, scope: RuntimeScope) -> Iterator[Any]:
         exits = []
