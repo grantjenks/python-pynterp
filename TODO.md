@@ -305,6 +305,11 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
 - Targeted CPython 3.14 diagnostics (`run_case`, input `timeout=10` with overrides active): each of the six files now returns `status="suite"` (no timeout) with elapsed times `10.3s` to `23.4s`; per-file `tests_run`: `96`, `25`, `114`, `53`, `26`, `23`.
 - Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `122` (sum of declared tests across these six `iter059` timeout files) if behavior reproduces under full-run worker contention.
+- Progress (2026-02-27, iter 061): Added `resolve_case_timeout(...)` override for `Lib/test/test_free_threading/test_monitoring.py` (`40s`) after calibration showed slow completion under interpretation (`timeout` at `10s`, `suite` near `25s` with extended budget).
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
+- Targeted CPython 3.14 diagnostic (`run_case`, input `timeout=10` with override active): `Lib/test/test_free_threading/test_monitoring.py` now returns `status="suite"` (no timeout), elapsed `25.0s`, `tests_run=13`.
+- Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `9` (declared tests in `test_free_threading/test_monitoring.py` from `iter059`) if behavior reproduces under full-run worker contention.
+- Diagnostic note: remaining top-timeout files `Lib/test/test_asyncgen.py` (`timeout@60s`), `Lib/test/test_concurrent_futures/test_deadlock.py` (`timeout@40s`), and `Lib/test/test_concurrent_futures/test_interpreter_pool.py` (`timeout@90s`) appear to be non-trivial hangs rather than simple slow suites.
 
 4. Reduce `Suite/Failure` assertion mismatches.
 - Start with top files from the next full probe report.

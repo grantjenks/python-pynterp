@@ -382,6 +382,7 @@ def test_resolve_case_timeout_applies_slow_module_overrides(tmp_path: Path) -> N
         "Lib/test/test_zipfile64.py": 90,
         "Lib/test/test_asyncio/test_taskgroups.py": 25,
         "Lib/test/test_concurrent_futures/test_process_pool.py": 40,
+        "Lib/test/test_free_threading/test_monitoring.py": 40,
         "Lib/test/test_isinstance.py": 40,
     }
     for rel_path, expected in expectations.items():

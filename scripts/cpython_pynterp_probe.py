@@ -69,6 +69,7 @@ SLOW_TEST_TIMEOUT_OVERRIDES: dict[str, int] = {
     "Lib/test/test_concurrent_futures/test_process_pool.py": 40,
     "Lib/test/test_concurrent_futures/test_shutdown.py": 25,
     "Lib/test/test_concurrent_futures/test_thread_pool.py": 25,
+    "Lib/test/test_free_threading/test_monitoring.py": 40,
     "Lib/test/test_queue.py": 25,
     "Lib/test/test_isinstance.py": 40,
     "Lib/test/test_zipfile64.py": 90,
