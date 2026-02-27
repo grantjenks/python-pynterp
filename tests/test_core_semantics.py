@@ -1291,6 +1291,23 @@ RESULT = (xml.__name__, hasattr(xml, "parsers"))
     assert env["RESULT"] == ("xml", True)
 
 
+def test_importlib_metadata_available_without_importlib_import_module(run_interpreter):
+    source = """
+import importlib.metadata
+import importlib.metadata as metadata_alias
+
+RESULT = (
+    importlib.__name__,
+    importlib.metadata.__name__,
+    metadata_alias is importlib.metadata,
+    hasattr(importlib.metadata, "version"),
+    hasattr(importlib, "import_module"),
+)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("importlib", "importlib.metadata", True, True, False)
+
+
 @pytest.mark.skipif(not HAS_TEMPLATE_STR, reason="TemplateStr requires Python 3.14+")
 def test_templatestr_builds_template_with_interpolation_metadata(run_interpreter):
     source = """
