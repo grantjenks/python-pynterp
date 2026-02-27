@@ -109,6 +109,37 @@ def fake_len(_value):
     assert rebound_result == 3
 
 
+def test_globals_builtin_returns_interpreted_module_namespace() -> None:
+    source = """
+def foo():
+    return len([1, 2, 3])
+
+def use_globals():
+    ns = globals()
+    had_len = "len" in ns
+    old_len = ns.get("len")
+    ns["len"] = lambda _value: 7
+    try:
+        return foo()
+    finally:
+        if had_len:
+            ns["len"] = old_len
+        else:
+            del ns["len"]
+
+RESULT = use_globals()
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<test_globals_builtin>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<test_globals_builtin>")
+    assert env["RESULT"] == 7
+
+
 def test_namedexpr_assigns_and_returns_value(run_interpreter):
     source = """
 total = (value := 40) + 2

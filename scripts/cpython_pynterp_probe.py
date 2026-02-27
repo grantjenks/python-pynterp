@@ -121,7 +121,7 @@ env = {{
     "__name__": name,
     "__package__": pkg,
     "__file__": str(test_path),
-    "__builtins__": dict(builtins.__dict__),
+    "__builtins__": builtins,
 }}
 
 try:

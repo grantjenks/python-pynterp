@@ -140,6 +140,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "survives_builtin_len_rebind" -q` => `1 passed` (new regression for host `builtins.len` rebound to `UserFunction`); `uv run pytest tests/test_core_semantics.py -k "lambda_missing_required_argument_name or survives_builtin_len_rebind" -q` => `2 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_dynamic.py`): suite `errors` `3 -> 1` (`-2`), and suite-error signature `RecursionError: maximum recursion depth exceeded` `3 -> 0` (remaining suite error now `IndexError: list index out of range` `1`).
 - Expected full-probe delta on next rerun: `Suite/Error` recursion-signature counts should drop by at least the prior `test_dynamic.py` contribution (`-3`), with remaining recursion signatures currently concentrated in `test_fstring.py` (`1`) and `test_tomllib/test_misc.py` (`2`) based on targeted reruns.
+- Progress (2026-02-27, iter 021): Switched probe-runner module env to live `builtins` (`__builtins__ = builtins`) and added interpreted `globals()` dispatch in call evaluation (normal + generator paths), so runtime builtins/global rebinding follows CPython `test_dynamic` expectations.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "globals_builtin_returns_interpreted_module_namespace or survives_builtin_len_rebind" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -k "live_builtins_for_rebinding or run_case_normalizes_sysconf_permission_error" -q` => `2 passed`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_dynamic.py`): suite `errors` `1 -> 0` (`-1`), suite `failures` `3 -> 0` (`-3`); eliminated suite-error signature `IndexError: list index out of range` (`1 -> 0`).
+- Expected full-probe delta on next rerun: `Suite/Error` should drop by at least `1` from the prior `test_dynamic.py` contribution, and `Suite/Failure` should decrease by at least `3` from the same module slice.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

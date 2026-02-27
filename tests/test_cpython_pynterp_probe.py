@@ -224,3 +224,52 @@ class SysconfPermissionCase(unittest.TestCase):
     assert payload["tests_run"] == 1
     assert payload["failures"] == 0
     assert payload["errors"] == 0
+
+
+def test_run_case_uses_live_builtins_for_rebinding(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    test_root = cpython_root / "Lib" / "test"
+    test_root.mkdir(parents=True)
+
+    test_path = test_root / "test_live_builtins.py"
+    test_path.write_text(
+        """
+import builtins
+import unittest
+
+class LiveBuiltinsCase(unittest.TestCase):
+    def test_rebinding_len_updates_user_function_lookup(self):
+        def foo():
+            return len([1, 2, 3])
+
+        original = builtins.len
+        builtins.len = lambda _value: 7
+        try:
+            self.assertEqual(foo(), 7)
+        finally:
+            builtins.len = original
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    case = probe.TestCase(
+        path=test_path,
+        module_name="test_live_builtins",
+        package_name="",
+        declared_tests=1,
+    )
+    payload = probe.run_case(
+        case,
+        cpython_root=cpython_root,
+        python_exe=Path(sys.executable),
+        pynterp_src=Path(__file__).resolve().parents[1] / "src",
+        mode="module",
+        basis="tests",
+        timeout=10,
+    )
+
+    assert payload["status"] == "suite"
+    assert payload["tests_run"] == 1
+    assert payload["failures"] == 0
+    assert payload["errors"] == 0

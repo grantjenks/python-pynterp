@@ -218,6 +218,8 @@ class ExpressionMixin:
             else:
                 value = self.eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
+        if func is builtins.globals and not args and not kwargs:
+            return scope.globals
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
@@ -576,6 +578,8 @@ class ExpressionMixin:
             else:
                 value = yield from self.g_eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
+        if func is builtins.globals and not args and not kwargs:
+            return scope.globals
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
