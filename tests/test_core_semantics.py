@@ -2105,6 +2105,37 @@ RESULT = (signature_text, "()</dt>" in doc)
     assert env["RESULT"] == ("()", True)
 
 
+def test_functools_wraps_keeps_wrapper_behavior_for_user_function():
+    source = """
+import functools
+
+events = []
+
+def dec(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        events.append("wrapper")
+        return fn(*args, **kwargs)
+    return wrapper
+
+@dec
+def target():
+    events.append("target")
+
+target()
+RESULT = (tuple(events), target.__name__, target.__wrapped__.__name__)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<functools_wraps_user_function>",
+        "__builtins__": builtins,
+    }
+    interpreter.run(source, env=env, filename="<functools_wraps_user_function>")
+    assert env["RESULT"] == (("wrapper", "target"), "target", "target")
+
+
 def test_unittest_loader_loads_user_function_test_method_without_calling_it():
     source = """
 import types

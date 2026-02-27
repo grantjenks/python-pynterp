@@ -187,6 +187,32 @@ class UserFunction:
     on a class (so __init__ gets self bound, methods bind self, etc).
     """
 
+    # Keep interpreter execution state out of __dict__ so functools.update_wrapper()
+    # only copies user metadata (matching native function behavior).
+    __slots__ = (
+        "__dict__",
+        "interpreter",
+        "node",
+        "code",
+        "globals",
+        "builtins",
+        "scope_info",
+        "closure",
+        "defaults",
+        "kw_defaults",
+        "__defaults__",
+        "__kwdefaults__",
+        "is_generator",
+        "is_async",
+        "is_async_generator",
+        "__name__",
+        "__qualname__",
+        "__annotations__",
+        "__type_params__",
+        "__signature__",
+        "_private_owner",
+    )
+
     def __init__(
         self,
         interpreter: "Interpreter",
