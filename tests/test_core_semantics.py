@@ -2040,6 +2040,33 @@ RESULT = list(run())
     ]
 
 
+def test_attr_guard_allows_async_generator_frame_but_keeps_frame_pivots_blocked(run_interpreter):
+    source = """
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+try:
+    _ = frame.f_globals
+except Exception as blocked:
+    blocked_info = (type(blocked).__name__, str(blocked))
+else:
+    blocked_info = None
+
+RESULT = (frame is not None, ag.ag_running, blocked_info)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (
+        True,
+        False,
+        (
+            "AttributeError",
+            "attribute access to 'f_globals' is blocked in this environment",
+        ),
+    )
+
+
 def test_attr_guard_allows_class_bases_but_blocks_subclasses(run_interpreter):
     source = """
 class Derived(list):

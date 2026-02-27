@@ -38,6 +38,21 @@ RESULT = frame.f_globals["__builtins__"]
         interp.run(source, env=env, filename="<frame_probe>")
 
 
+def test_async_generator_frame_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def make_gen():
+    yield 1
+
+gen = make_gen()
+frame = gen.ag_frame
+RESULT = frame.f_globals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<async_frame_probe>")
+
+
 def test_traceback_frame_globals_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()

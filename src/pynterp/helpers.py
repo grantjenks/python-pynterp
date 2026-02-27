@@ -38,6 +38,14 @@ class InterpretedAsyncGenerator:
     def __aiter__(self) -> "InterpretedAsyncGenerator":
         return self
 
+    @property
+    def ag_frame(self) -> Any:
+        return getattr(self._body_runner, "gi_frame", None)
+
+    @property
+    def ag_running(self) -> bool:
+        return self._running
+
     async def __anext__(self) -> Any:
         return await self.asend(None)
 
