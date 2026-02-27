@@ -22,8 +22,7 @@ from __future__ import annotations
 import ast
 import builtins
 import symtable
-from typing import Any, Dict, Iterable, Iterator, Optional, Set
-
+from typing import Any, Dict, Iterator, Optional, Set
 
 UNBOUND = object()
 
@@ -31,6 +30,7 @@ UNBOUND = object()
 # ----------------------------
 # Control-flow signals (internal)
 # ----------------------------
+
 
 class ControlFlowSignal(BaseException):
     """Internal non-user exceptions used for control flow (return/break/continue)."""
@@ -51,6 +51,7 @@ class ContinueSignal(ControlFlowSignal):
 
 class Cell:
     """A tiny closure cell."""
+
     __slots__ = ("value",)
 
     def __init__(self, value: Any = UNBOUND):
@@ -63,6 +64,7 @@ class Cell:
 # ----------------------------
 # symtable helpers
 # ----------------------------
+
 
 def _table_frees(table: symtable.SymbolTable) -> Set[str]:
     """
@@ -81,6 +83,7 @@ def _contains_yield(fn_node: ast.FunctionDef) -> bool:
     """
     True iff this function's body contains Yield/YieldFrom (ignoring nested defs/classes/lambdas).
     """
+
     class Finder(ast.NodeVisitor):
         def __init__(self) -> None:
             self.found = False
@@ -139,10 +142,12 @@ def _collect_comprehension_locals(gens: list[ast.comprehension]) -> Set[str]:
 # Code object wrapper (AST + symtable + cellvar analysis)
 # ----------------------------
 
+
 class ScopeInfo:
     """
     Per-function scope info needed for runtime name resolution.
     """
+
     def __init__(self, table: symtable.Function, cellvars: Set[str]):
         self.table = table
         self.locals: Set[str] = set(table.get_locals())
@@ -161,6 +166,7 @@ class ModuleCode:
       - a mapping from (type,name,lineno) -> table
       - computed cellvars for each function table
     """
+
     def __init__(self, source: str, filename: str = "<pynterp>"):
         self.source = source
         self.filename = filename
@@ -216,6 +222,7 @@ class ModuleCode:
 # ----------------------------
 # Runtime scopes
 # ----------------------------
+
 
 class RuntimeScope:
     def __init__(self, code: ModuleCode, globals_dict: dict, builtins_dict: dict):
@@ -384,15 +391,11 @@ class FunctionScope(RuntimeScope):
         if name in si.locals:
             if name in si.cellvars:
                 if self.cells[name].value is UNBOUND:
-                    raise UnboundLocalError(
-                        f"local variable '{name}' referenced before assignment"
-                    )
+                    raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
                 self.cells[name].value = UNBOUND
                 return
             if name not in self.locals:
-                raise UnboundLocalError(
-                    f"local variable '{name}' referenced before assignment"
-                )
+                raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
             del self.locals[name]
             return
 
@@ -424,6 +427,7 @@ class ClassBodyScope(RuntimeScope):
       - closure capture for methods: delegated to OUTER scope (not class namespace)
         (matches CPython behavior: methods don't close over class locals)
     """
+
     def __init__(
         self,
         code: ModuleCode,
@@ -465,6 +469,7 @@ class ComprehensionScope(RuntimeScope):
     We keep a local mapping for the comprehension's targets so they DON'T leak,
     while loads fall back to the outer scope.
     """
+
     def __init__(
         self,
         code: ModuleCode,
@@ -482,14 +487,10 @@ class ComprehensionScope(RuntimeScope):
         if name in self.locals:
             val = self.locals[name]
             if val is UNBOUND:
-                raise UnboundLocalError(
-                    f"local variable '{name}' referenced before assignment"
-                )
+                raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
             return val
         if name in self.local_names:
-            raise UnboundLocalError(
-                f"local variable '{name}' referenced before assignment"
-            )
+            raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
         return self.outer_scope.load(name)
 
     def store(self, name: str, value: Any) -> Any:
@@ -504,9 +505,7 @@ class ComprehensionScope(RuntimeScope):
             del self.locals[name]
             return
         if name in self.local_names:
-            raise UnboundLocalError(
-                f"local variable '{name}' referenced before assignment"
-            )
+            raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
         self.outer_scope.delete(name)
 
     def capture_cell(self, name: str) -> Cell:
@@ -516,6 +515,7 @@ class ComprehensionScope(RuntimeScope):
 # ----------------------------
 # Function objects + binding in classes
 # ----------------------------
+
 
 class BoundMethod:
     def __init__(self, func: "UserFunction", self_obj: Any):
@@ -537,6 +537,7 @@ class UserFunction:
     Implements descriptor protocol so it behaves like a Python function when placed
     on a class (so __init__ gets self bound, methods bind self, etc).
     """
+
     def __init__(
         self,
         interpreter: "Interpreter",
@@ -578,8 +579,11 @@ class UserFunction:
 # The interpreter
 # ----------------------------
 
+
 class Interpreter:
-    def __init__(self, allowed_imports: Optional[Set[str]] = None, allow_relative_imports: bool = False):
+    def __init__(
+        self, allowed_imports: Optional[Set[str]] = None, allow_relative_imports: bool = False
+    ):
         """
         allowed_imports:
           - None  -> allow any import (NOT secure)
@@ -600,7 +604,11 @@ class Interpreter:
         if not name:
             return False
         for allowed in self.allowed_imports:
-            if name == allowed or name.startswith(allowed + ".") or name.split(".", 1)[0] == allowed:
+            if (
+                name == allowed
+                or name.startswith(allowed + ".")
+                or name.split(".", 1)[0] == allowed
+            ):
                 return True
         return False
 
@@ -944,7 +952,9 @@ class Interpreter:
             if alias.name == "*":
                 names = getattr(mod, "__all__", None)
                 if names is None:
-                    names = [k for k in getattr(mod, "__dict__", {}).keys() if not k.startswith("_")]
+                    names = [
+                        k for k in getattr(mod, "__dict__", {}).keys() if not k.startswith("_")
+                    ]
                 for k in names:
                     scope.store(k, getattr(mod, k))
             else:
@@ -969,10 +979,14 @@ class Interpreter:
 
     def eval_UnaryOp(self, node: ast.UnaryOp, scope: RuntimeScope) -> Any:
         operand = self.eval_expr(node.operand, scope)
-        if isinstance(node.op, ast.UAdd): return +operand
-        if isinstance(node.op, ast.USub): return -operand
-        if isinstance(node.op, ast.Not): return not operand
-        if isinstance(node.op, ast.Invert): return ~operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+        if isinstance(node.op, ast.USub):
+            return -operand
+        if isinstance(node.op, ast.Not):
+            return not operand
+        if isinstance(node.op, ast.Invert):
+            return ~operand
         raise NotImplementedError
 
     def eval_BoolOp(self, node: ast.BoolOp, scope: RuntimeScope) -> Any:
@@ -1041,7 +1055,11 @@ class Interpreter:
 
     def eval_Subscript(self, node: ast.Subscript, scope: RuntimeScope) -> Any:
         obj = self.eval_expr(node.value, scope)
-        idx = self.eval_expr(node.slice, scope) if not isinstance(node.slice, ast.Slice) else self._eval_slice(node.slice, scope)
+        idx = (
+            self.eval_expr(node.slice, scope)
+            if not isinstance(node.slice, ast.Slice)
+            else self._eval_slice(node.slice, scope)
+        )
         if isinstance(node.ctx, ast.Load):
             return obj[idx]
         raise NotImplementedError("Subscript ctx other than Load not supported here")
@@ -1053,7 +1071,9 @@ class Interpreter:
 
     def eval_ListComp(self, node: ast.ListComp, scope: RuntimeScope) -> list:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: list = []
         gens = node.generators
@@ -1084,7 +1104,9 @@ class Interpreter:
 
     def eval_SetComp(self, node: ast.SetComp, scope: RuntimeScope) -> set:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: set = set()
         gens = node.generators
@@ -1113,7 +1135,9 @@ class Interpreter:
 
     def eval_DictComp(self, node: ast.DictComp, scope: RuntimeScope) -> dict:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: dict = {}
         gens = node.generators
@@ -1278,10 +1302,10 @@ class Interpreter:
 
     def g_exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> Iterator[Any]:
         defaults = []
-        for d in (node.args.defaults or []):
+        for d in node.args.defaults or []:
             defaults.append((yield from self.g_eval_expr(d, scope)))
         kw_defaults = []
-        for d in (getattr(node.args, "kw_defaults", []) or []):
+        for d in getattr(node.args, "kw_defaults", []) or []:
             kw_defaults.append((yield from self.g_eval_expr(d, scope)) if d is not None else None)
 
         fn_table = scope.code.lookup_function_table(node)
@@ -1318,7 +1342,7 @@ class Interpreter:
             if k.arg is None:
                 kw.update((yield from self.g_eval_expr(k.value, scope)))
             else:
-                kw[k.arg] = (yield from self.g_eval_expr(k.value, scope))
+                kw[k.arg] = yield from self.g_eval_expr(k.value, scope)
 
         meta = kw.pop("metaclass", None)
         if meta is None:
@@ -1328,7 +1352,9 @@ class Interpreter:
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
         class_ns.setdefault("__qualname__", node.name)
 
-        body_scope = ClassBodyScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, class_ns=class_ns)
+        body_scope = ClassBodyScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, class_ns=class_ns
+        )
         # class body itself cannot yield (syntax), so normal exec is OK:
         self.exec_block(node.body, body_scope)
 
@@ -1464,10 +1490,14 @@ class Interpreter:
 
     def g_eval_UnaryOp(self, node: ast.UnaryOp, scope: RuntimeScope) -> Iterator[Any]:
         operand = yield from self.g_eval_expr(node.operand, scope)
-        if isinstance(node.op, ast.UAdd): return +operand
-        if isinstance(node.op, ast.USub): return -operand
-        if isinstance(node.op, ast.Not): return not operand
-        if isinstance(node.op, ast.Invert): return ~operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+        if isinstance(node.op, ast.USub):
+            return -operand
+        if isinstance(node.op, ast.Not):
+            return not operand
+        if isinstance(node.op, ast.Invert):
+            return ~operand
         raise NotImplementedError
 
     def g_eval_BoolOp(self, node: ast.BoolOp, scope: RuntimeScope) -> Iterator[Any]:
@@ -1512,7 +1542,7 @@ class Interpreter:
             if kw.arg is None:
                 kwargs.update((yield from self.g_eval_expr(kw.value, scope)))
             else:
-                kwargs[kw.arg] = (yield from self.g_eval_expr(kw.value, scope))
+                kwargs[kw.arg] = yield from self.g_eval_expr(kw.value, scope)
         return func(*args, **kwargs)
 
     def g_eval_List(self, node: ast.List, scope: RuntimeScope) -> Iterator[list]:
@@ -1539,8 +1569,8 @@ class Interpreter:
             if k is None:
                 d.update((yield from self.g_eval_expr(v, scope)))
             else:
-                kk = (yield from self.g_eval_expr(k, scope))
-                vv = (yield from self.g_eval_expr(v, scope))
+                kk = yield from self.g_eval_expr(k, scope)
+                vv = yield from self.g_eval_expr(v, scope)
                 d[kk] = vv
         return d
 
@@ -1562,7 +1592,9 @@ class Interpreter:
     # comprehensions (generator-mode)
     def g_eval_ListComp(self, node: ast.ListComp, scope: RuntimeScope) -> Iterator[list]:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: list = []
         gens = node.generators
@@ -1594,7 +1626,9 @@ class Interpreter:
 
     def g_eval_SetComp(self, node: ast.SetComp, scope: RuntimeScope) -> Iterator[set]:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: set = set()
         gens = node.generators
@@ -1626,7 +1660,9 @@ class Interpreter:
 
     def g_eval_DictComp(self, node: ast.DictComp, scope: RuntimeScope) -> Iterator[dict]:
         locals_set = _collect_comprehension_locals(node.generators)
-        comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+        comp_scope = ComprehensionScope(
+            scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+        )
 
         out: dict = {}
         gens = node.generators
@@ -1657,7 +1693,9 @@ class Interpreter:
         yield from rec(0)
         return out
 
-    def g_eval_GeneratorExp(self, node: ast.GeneratorExp, scope: RuntimeScope) -> Iterator[Iterator[Any]]:
+    def g_eval_GeneratorExp(
+        self, node: ast.GeneratorExp, scope: RuntimeScope
+    ) -> Iterator[Iterator[Any]]:
         locals_set = _collect_comprehension_locals(node.generators)
         gens = node.generators
         if any(getattr(g, "is_async", False) for g in gens):
@@ -1666,7 +1704,9 @@ class Interpreter:
         outer_iter = yield from self.g_eval_expr(gens[0].iter, scope)
 
         def make_gen() -> Iterator[Any]:
-            comp_scope = ComprehensionScope(scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set)
+            comp_scope = ComprehensionScope(
+                scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+            )
 
             def rec(i: int) -> Iterator[Any]:
                 if i == len(gens):
@@ -1693,10 +1733,10 @@ class Interpreter:
     # yield / yield from
     def g_eval_Yield(self, node: ast.Yield, scope: RuntimeScope) -> Iterator[Any]:
         if node.value is None:
-            sent = (yield None)
+            sent = yield None
             return sent
         val = yield from self.g_eval_expr(node.value, scope)
-        sent = (yield val)
+        sent = yield val
         return sent
 
     def g_eval_YieldFrom(self, node: ast.YieldFrom, scope: RuntimeScope) -> Iterator[Any]:
@@ -1726,7 +1766,11 @@ class Interpreter:
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
-            idx = self.eval_expr(target.slice, scope) if not isinstance(target.slice, ast.Slice) else self._eval_slice(target.slice, scope)
+            idx = (
+                self.eval_expr(target.slice, scope)
+                if not isinstance(target.slice, ast.Slice)
+                else self._eval_slice(target.slice, scope)
+            )
             obj[idx] = value
             return
         raise NotImplementedError(f"Assignment target not supported: {target.__class__.__name__}")
@@ -1768,7 +1812,11 @@ class Interpreter:
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
-            idx = self.eval_expr(target.slice, scope) if not isinstance(target.slice, ast.Slice) else self._eval_slice(target.slice, scope)
+            idx = (
+                self.eval_expr(target.slice, scope)
+                if not isinstance(target.slice, ast.Slice)
+                else self._eval_slice(target.slice, scope)
+            )
             del obj[idx]
             return
         raise NotImplementedError(f"del target not supported: {target.__class__.__name__}")
@@ -1804,32 +1852,55 @@ class Interpreter:
     # ----------------------------
 
     def _apply_binop(self, op: ast.operator, left: Any, right: Any) -> Any:
-        if isinstance(op, ast.Add): return left + right
-        if isinstance(op, ast.Sub): return left - right
-        if isinstance(op, ast.Mult): return left * right
-        if isinstance(op, ast.Div): return left / right
-        if isinstance(op, ast.FloorDiv): return left // right
-        if isinstance(op, ast.Mod): return left % right
-        if isinstance(op, ast.Pow): return left ** right
-        if isinstance(op, ast.BitAnd): return left & right
-        if isinstance(op, ast.BitOr): return left | right
-        if isinstance(op, ast.BitXor): return left ^ right
-        if isinstance(op, ast.LShift): return left << right
-        if isinstance(op, ast.RShift): return left >> right
-        if isinstance(op, ast.MatMult): return left @ right
+        if isinstance(op, ast.Add):
+            return left + right
+        if isinstance(op, ast.Sub):
+            return left - right
+        if isinstance(op, ast.Mult):
+            return left * right
+        if isinstance(op, ast.Div):
+            return left / right
+        if isinstance(op, ast.FloorDiv):
+            return left // right
+        if isinstance(op, ast.Mod):
+            return left % right
+        if isinstance(op, ast.Pow):
+            return left**right
+        if isinstance(op, ast.BitAnd):
+            return left & right
+        if isinstance(op, ast.BitOr):
+            return left | right
+        if isinstance(op, ast.BitXor):
+            return left ^ right
+        if isinstance(op, ast.LShift):
+            return left << right
+        if isinstance(op, ast.RShift):
+            return left >> right
+        if isinstance(op, ast.MatMult):
+            return left @ right
         raise NotImplementedError(f"BinOp {op.__class__.__name__} not supported")
 
     def _apply_compare(self, op: ast.cmpop, left: Any, right: Any) -> bool:
-        if isinstance(op, ast.Eq): return left == right
-        if isinstance(op, ast.NotEq): return left != right
-        if isinstance(op, ast.Lt): return left < right
-        if isinstance(op, ast.LtE): return left <= right
-        if isinstance(op, ast.Gt): return left > right
-        if isinstance(op, ast.GtE): return left >= right
-        if isinstance(op, ast.Is): return left is right
-        if isinstance(op, ast.IsNot): return left is not right
-        if isinstance(op, ast.In): return left in right
-        if isinstance(op, ast.NotIn): return left not in right
+        if isinstance(op, ast.Eq):
+            return left == right
+        if isinstance(op, ast.NotEq):
+            return left != right
+        if isinstance(op, ast.Lt):
+            return left < right
+        if isinstance(op, ast.LtE):
+            return left <= right
+        if isinstance(op, ast.Gt):
+            return left > right
+        if isinstance(op, ast.GtE):
+            return left >= right
+        if isinstance(op, ast.Is):
+            return left is right
+        if isinstance(op, ast.IsNot):
+            return left is not right
+        if isinstance(op, ast.In):
+            return left in right
+        if isinstance(op, ast.NotIn):
+            return left not in right
         raise NotImplementedError(f"Compare {op.__class__.__name__} not supported")
 
     # ----------------------------
@@ -1839,7 +1910,9 @@ class Interpreter:
     def _call_user_function(self, func_obj: UserFunction, args: tuple, kwargs: dict) -> Any:
         node = func_obj.node
         si = func_obj.scope_info
-        call_scope = FunctionScope(func_obj.code, func_obj.globals, self.builtins, si, func_obj.closure)
+        call_scope = FunctionScope(
+            func_obj.code, func_obj.globals, self.builtins, si, func_obj.closure
+        )
 
         def is_bound(name: str) -> bool:
             if name in si.cellvars:
@@ -1853,17 +1926,19 @@ class Interpreter:
 
         default_map: Dict[str, Any] = {}
         if func_obj.defaults:
-            for name, val in zip(params[-len(func_obj.defaults):], func_obj.defaults):
+            for name, val in zip(params[-len(func_obj.defaults) :], func_obj.defaults):
                 default_map[name] = val
 
         # positional binding
         if len(args) > len(params) and node.args.vararg is None:
-            raise TypeError(f"{node.name}() takes {len(params)} positional args but {len(args)} were given")
+            raise TypeError(
+                f"{node.name}() takes {len(params)} positional args but {len(args)} were given"
+            )
 
         for name, val in zip(params, args):
             call_scope.store(name, val)
 
-        extra_pos = args[len(params):]
+        extra_pos = args[len(params) :]
         if extra_pos:
             if node.args.vararg is None:
                 raise TypeError("varargs not supported")
@@ -1873,7 +1948,9 @@ class Interpreter:
         for k, v in kwargs.items():
             if k in params:
                 if any(k == a.arg for a in posonly):
-                    raise TypeError(f"{node.name}() got positional-only arg '{k}' passed as keyword")
+                    raise TypeError(
+                        f"{node.name}() got positional-only arg '{k}' passed as keyword"
+                    )
                 if is_bound(k):
                     raise TypeError(f"{node.name}() got multiple values for argument '{k}'")
                 call_scope.store(k, v)
@@ -1903,7 +1980,9 @@ class Interpreter:
                     if default_val is not None:
                         call_scope.store(name, default_val)
                     else:
-                        raise TypeError(f"{node.name}() missing required keyword-only argument '{name}'")
+                        raise TypeError(
+                            f"{node.name}() missing required keyword-only argument '{name}'"
+                        )
 
         # ensure vararg/kwarg exist
         if node.args.vararg is not None and not is_bound(node.args.vararg.arg):
