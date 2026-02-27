@@ -3,8 +3,9 @@ from __future__ import annotations
 import ast
 from typing import Any, Dict, Iterator
 
-from .common import UNBOUND, ReturnSignal
+from .common import NO_DEFAULT, UNBOUND, ReturnSignal
 from .functions import UserFunction
+from .lib.guards import safe_delattr, safe_setattr
 from .scopes import FunctionScope, RuntimeScope
 
 
@@ -22,7 +23,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = self.eval_expr(target.value, scope)
-            setattr(obj, target.attr, value)
+            safe_setattr(obj, target.attr, value)
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
@@ -49,7 +50,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = yield from self.g_eval_expr(target.value, scope)
-            setattr(obj, target.attr, value)
+            safe_setattr(obj, target.attr, value)
             return
         if isinstance(target, ast.Subscript):
             obj = yield from self.g_eval_expr(target.value, scope)
@@ -68,7 +69,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = self.eval_expr(target.value, scope)
-            delattr(obj, target.attr)
+            safe_delattr(obj, target.attr)
             return
         if isinstance(target, ast.Subscript):
             obj = self.eval_expr(target.value, scope)
@@ -92,7 +93,7 @@ class HelperMixin:
             return
         if isinstance(target, ast.Attribute):
             obj = yield from self.g_eval_expr(target.value, scope)
-            delattr(obj, target.attr)
+            safe_delattr(obj, target.attr)
             return
         if isinstance(target, ast.Subscript):
             obj = yield from self.g_eval_expr(target.value, scope)
@@ -238,7 +239,7 @@ class HelperMixin:
             for arg_node, default_val in zip(kwonlyargs, func_obj.kw_defaults):
                 name = arg_node.arg
                 if not is_bound(name):
-                    if default_val is not None:
+                    if default_val is not NO_DEFAULT:
                         call_scope.store(name, default_val)
                     else:
                         raise TypeError(

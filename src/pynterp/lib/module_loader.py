@@ -4,7 +4,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
 
-from .builtins import make_bootstrap_builtins
+from .builtins import make_safe_builtins
 
 
 class InterpretedModuleLoader:
@@ -24,7 +24,7 @@ class InterpretedModuleLoader:
         self.fallback_importer = fallback_importer
 
         self.modules: dict[str, ModuleType] = {}
-        self.builtins = make_bootstrap_builtins(self.import_module)
+        self.builtins = make_safe_builtins(self.import_module)
 
     def import_module(self, name, globals=None, locals=None, fromlist=(), level=0):
         absolute_name = self._resolve_absolute_name(name, globals, level)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from typing import Any, Dict, Iterator
 
-from .common import BreakSignal, Cell, ContinueSignal, ControlFlowSignal, ReturnSignal
+from .common import NO_DEFAULT, BreakSignal, Cell, ContinueSignal, ControlFlowSignal, ReturnSignal
 from .functions import UserFunction
 from .scopes import ClassBodyScope, RuntimeScope
 from .symtable_utils import _contains_yield
@@ -109,7 +109,7 @@ class StatementMixin:
     def exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> None:
         defaults = [self.eval_expr(d, scope) for d in (node.args.defaults or [])]
         kw_defaults = [
-            (self.eval_expr(d, scope) if d is not None else None)
+            (self.eval_expr(d, scope) if d is not None else NO_DEFAULT)
             for d in (getattr(node.args, "kw_defaults", []) or [])
         ]
 
@@ -395,7 +395,9 @@ class StatementMixin:
             defaults.append((yield from self.g_eval_expr(d, scope)))
         kw_defaults = []
         for d in getattr(node.args, "kw_defaults", []) or []:
-            kw_defaults.append((yield from self.g_eval_expr(d, scope)) if d is not None else None)
+            kw_defaults.append(
+                (yield from self.g_eval_expr(d, scope)) if d is not None else NO_DEFAULT
+            )
 
         fn_table = scope.code.lookup_function_table(node)
         fn_scope_info = scope.code.scope_info_for(fn_table)

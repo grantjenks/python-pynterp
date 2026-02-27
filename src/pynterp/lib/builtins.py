@@ -3,68 +3,66 @@ from __future__ import annotations
 import builtins
 from typing import Any, Callable
 
-SAFE_BUILTIN_NAMES = (
+from .guards import safe_delattr, safe_getattr, safe_hasattr, safe_setattr
+
+_COMMON_BUILTIN_NAMES = (
     "BaseException",
     "Exception",
     "ImportError",
     "NameError",
+    "NotImplementedError",
     "RuntimeError",
     "TypeError",
+    "UnboundLocalError",
     "ValueError",
     "ZeroDivisionError",
+    "all",
+    "any",
     "bool",
+    "callable",
     "dict",
     "enumerate",
     "float",
+    "frozenset",
     "int",
+    "isinstance",
+    "issubclass",
+    "iter",
     "len",
     "list",
     "max",
     "min",
+    "next",
+    "object",
     "print",
     "range",
+    "reversed",
     "round",
     "set",
+    "slice",
     "str",
+    "super",
     "sum",
     "tuple",
     "type",
     "zip",
 )
 
-BOOTSTRAP_EXTRA_BUILTIN_NAMES = (
-    "NotImplementedError",
-    "UnboundLocalError",
-    "all",
-    "any",
-    "callable",
-    "delattr",
-    "getattr",
-    "hasattr",
-    "isinstance",
-    "issubclass",
-    "iter",
-    "next",
-    "object",
-    "reversed",
-    "setattr",
-    "slice",
-    "super",
-)
-
 
 def make_safe_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
-    """Build a small builtins dictionary suitable for the interpreter environment."""
-    out = {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
+    """Build builtins dictionary with guard-railed reflection helpers."""
+    out = {name: getattr(builtins, name) for name in _COMMON_BUILTIN_NAMES}
+    out["getattr"] = safe_getattr
+    out["hasattr"] = safe_hasattr
+    out["setattr"] = safe_setattr
+    out["delattr"] = safe_delattr
     out["__import__"] = importer
     return out
 
 
 def make_bootstrap_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
-    """Build a richer builtins dictionary for self-hosting interpreter bootstrap."""
-    out = make_safe_builtins(importer)
-    out.update({name: getattr(builtins, name) for name in BOOTSTRAP_EXTRA_BUILTIN_NAMES})
-    return out
+    """Compat alias for callers; bootstrap and default now share one policy."""
+    return make_safe_builtins(importer)
 
 
 def make_safe_env(
@@ -80,8 +78,5 @@ def make_safe_env(
 def make_bootstrap_env(
     importer: Callable[..., Any], *, env: dict[str, Any] | None = None, name: str = "__main__"
 ) -> dict[str, Any]:
-    """Create an explicit environment for interpreter self-hosting bootstrap."""
-    out: dict[str, Any] = {} if env is None else dict(env)
-    out.setdefault("__builtins__", make_bootstrap_builtins(importer))
-    out.setdefault("__name__", name)
-    return out
+    """Compat alias for callers; bootstrap and default now share one policy."""
+    return make_safe_env(importer, env=env, name=name)

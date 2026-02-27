@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterator, Optional, Set
 from pynterp.lib import (
     InterpretedModuleLoader,
     import_safe_stdlib_module,
-    make_bootstrap_env,
     make_safe_env,
 )
 
@@ -58,14 +57,36 @@ class InterpreterCore:
             raise ImportError("__import__ is not available in this environment")
         return imp(name, scope.globals, scope.globals, fromlist, level)
 
-    def make_default_env(self, env: Optional[dict] = None, *, name: str = "__main__") -> dict:
+    def make_default_env(
+        self,
+        env: Optional[dict] = None,
+        *,
+        name: str = "__main__",
+        package_root: str | Path | None = None,
+        package_name: str = "pynterp",
+    ) -> dict:
         if env is None:
             base: Dict[str, Any] = {}
         elif isinstance(env, dict):
             base = dict(env)
         else:
             raise TypeError("env must be dict or None")
-        return make_safe_env(self._restricted_import, env=base, name=name)
+
+        loader: InterpretedModuleLoader | None = None
+        importer = self._restricted_import
+        if package_root is not None:
+            loader = InterpretedModuleLoader(
+                self,
+                package_name=package_name,
+                package_root=package_root,
+                fallback_importer=self._restricted_import,
+            )
+            importer = loader.import_module
+
+        out = make_safe_env(importer, env=base, name=name)
+        if loader is not None:
+            out.setdefault("__module_loader__", loader)
+        return out
 
     def make_bootstrap_env(
         self,
@@ -75,22 +96,13 @@ class InterpreterCore:
         env: Optional[dict] = None,
         name: str = "__main__",
     ) -> dict:
-        if env is None:
-            base: Dict[str, Any] = {}
-        elif isinstance(env, dict):
-            base = dict(env)
-        else:
-            raise TypeError("env must be dict or None")
-
-        loader = InterpretedModuleLoader(
-            self,
-            package_name=package_name,
+        # Compat alias: bootstrap and default now share one policy.
+        return self.make_default_env(
+            env=env,
+            name=name,
             package_root=package_root,
-            fallback_importer=self._restricted_import,
+            package_name=package_name,
         )
-        out = make_bootstrap_env(loader.import_module, env=base, name=name)
-        out.setdefault("__module_loader__", loader)
-        return out
 
     # ----- run -----
 

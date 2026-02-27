@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 UNBOUND = object()
+NO_DEFAULT = object()
 
 
 class ControlFlowSignal(BaseException):
