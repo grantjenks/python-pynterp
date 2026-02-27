@@ -334,10 +334,15 @@ class ComprehensionScope(RuntimeScope):
         self.outer_scope = outer_scope
         self.local_names = set(local_names)
         self.locals: Dict[str, Any] = {}
+        self.cells: Dict[str, Cell] = {}
 
     def load(self, name: str) -> Any:
         if name in self.locals:
             val = self.locals[name]
+            if type(val) is Cell:
+                if val.value is UNBOUND:
+                    raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
+                return val.value
             if val is UNBOUND:
                 raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
             return val
@@ -346,19 +351,42 @@ class ComprehensionScope(RuntimeScope):
         return self.outer_scope.load(name)
 
     def store(self, name: str, value: Any) -> Any:
+        existing = self.locals.get(name, _MISSING)
+        if type(existing) is Cell:
+            existing.value = value
+            return value
         self.locals[name] = value
         return value
 
     def unbind(self, name: str) -> None:
+        existing = self.locals.get(name, _MISSING)
+        if type(existing) is Cell:
+            existing.value = UNBOUND
+            return
         self.locals.pop(name, None)
 
     def delete(self, name: str) -> None:
         if name in self.locals:
-            del self.locals[name]
+            existing = self.locals[name]
+            if type(existing) is Cell:
+                if existing.value is UNBOUND:
+                    raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
+                existing.value = UNBOUND
+            else:
+                del self.locals[name]
             return
         if name in self.local_names:
             raise UnboundLocalError(f"local variable '{name}' referenced before assignment")
         self.outer_scope.delete(name)
 
     def capture_cell(self, name: str) -> Cell:
+        if name in self.local_names:
+            existing = self.locals.get(name, _MISSING)
+            if type(existing) is Cell:
+                return existing
+
+            cell = Cell(UNBOUND if existing is _MISSING else existing)
+            self.locals[name] = cell
+            self.cells[name] = cell
+            return cell
         return self.outer_scope.capture_cell(name)

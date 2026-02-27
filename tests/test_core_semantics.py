@@ -2123,6 +2123,31 @@ RESULT = x
     assert env["RESULT"] == 99
 
 
+def test_list_comprehension_lambda_closure_uses_shared_iteration_cell(run_interpreter):
+    source = """
+items = [(lambda: i) for i in range(5)]
+RESULT = [fn() for fn in items]
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == [4, 4, 4, 4, 4]
+
+
+def test_class_scope_comprehension_lambda_closure_and_class_cell(run_interpreter):
+    source = """
+class C:
+    def method(self):
+        super()
+        return __class__
+
+    items = [(lambda: i) for i in range(5)]
+    y = [fn() for fn in items]
+
+RESULT = (C.y, C().method() is C)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ([4, 4, 4, 4, 4], True)
+
+
 def test_import_restriction(run_interpreter):
     source = """
 import os
