@@ -209,6 +209,7 @@ class UserFunction:
     # only copies user metadata (matching native function behavior).
     __slots__ = (
         "__dict__",
+        "__weakref__",
         "interpreter",
         "node",
         "code",

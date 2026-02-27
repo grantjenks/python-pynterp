@@ -2277,6 +2277,20 @@ RESULT = (signature_text, "()</dt>" in doc)
     assert env["RESULT"] == ("()", True)
 
 
+def test_user_function_supports_weakref(run_interpreter):
+    import weakref
+
+    source = """
+def f():
+    return 42
+
+ref = WEAKREF.ref(f)
+RESULT = (ref() is f, ref()())
+"""
+    env = run_interpreter(source, env={"WEAKREF": weakref})
+    assert env["RESULT"] == (True, 42)
+
+
 def test_functools_wraps_keeps_wrapper_behavior_for_user_function():
     source = """
 import functools

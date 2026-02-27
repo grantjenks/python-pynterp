@@ -233,6 +233,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "policy_blocked or split_policy_blocked or collect_policy_blocked" -q` => `3 passed, 8 deselected`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `11 passed` (`+3 passed` vs iter 042 from new policy-blocked suite-error coverage).
 - Targeted CPython 3.14 diagnostics (`run_case`): `Lib/test/test_grammar.py` raw suite `errors` `2` with `policy_blocked_errors` `2` => supported `Suite/Error` `0`; `Lib/test/test_listcomps.py` raw suite `errors` `3` with `policy_blocked_errors` `3` => supported `Suite/Error` `0`.
 - Expected full-probe delta on next rerun: `Suite/Error` should decrease by at least `5` from these two policy-only suites alone (`test_grammar` + `test_listcomps`), with corresponding movement into blocked-skip accounting.
+- Progress (2026-02-27, iter 044): Enabled weak-reference support for interpreted callables by adding `__weakref__` to `pynterp.functions.UserFunction.__slots__`, and added a regression test validating `weakref.ref()` roundtrip on interpreted functions.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "user_function_supports_weakref or functools_wraps_keeps_wrapper_behavior_for_user_function" -q` => `2 passed, 129 deselected`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_thread.py`): suite `errors` `1 -> 0` (`-1`) with `failures` unchanged at `0`; eliminated suite-error signature `TypeError: cannot create weak reference to 'UserFunction' object` (`1 -> 0`).
+- Expected full-probe delta on next rerun: `Suite/Error` should decrease by at least `1` from `Lib/test/test_thread.py` due interpreted callable weakref parity.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
