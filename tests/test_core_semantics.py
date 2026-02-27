@@ -10,6 +10,7 @@ from pynterp import Interpreter
 
 HAS_TEMPLATE_STR = hasattr(ast, "TemplateStr")
 HAS_TYPE_ALIAS = hasattr(ast, "TypeAlias")
+HAS_TYPE_PARAMS = hasattr(ast.parse("def f():\n    pass").body[0], "type_params")
 if HAS_TEMPLATE_STR:
     import string.templatelib as templatelib
 
@@ -294,6 +295,37 @@ RESULT = (Alias[int].__args__, leaked)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == ((int,), False)
+
+
+def test_user_function_exposes_empty_type_params_by_default(run_interpreter):
+    source = """
+def f():
+    return 42
+
+RESULT = f.__type_params__
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ()
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_function_records_type_params_without_scope_leak(run_interpreter):
+    source = """
+def f[T](value: T):
+    return value
+
+T_param, = f.__type_params__
+try:
+    T
+except NameError:
+    leaked = False
+else:
+    leaked = True
+
+RESULT = (T_param.__name__, f(7), leaked)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == ("T", 7, False)
 
 
 def test_async_function_def_returns_coroutine(run_interpreter):

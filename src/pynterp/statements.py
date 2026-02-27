@@ -123,6 +123,15 @@ class StatementMixin:
 
         raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")
 
+    def _build_type_params(self, nodes: Sequence[ast.AST], scope: RuntimeScope) -> tuple[Any, ...]:
+        type_param_bindings: Dict[str, Any] = {}
+        type_params: list[Any] = []
+        for type_param_node in nodes:
+            type_param = self._build_type_param(type_param_node, scope, type_param_bindings)
+            type_param_bindings[type_param_node.name] = type_param
+            type_params.append(type_param)
+        return tuple(type_params)
+
     def _normalize_class_namespace(self, class_ns: Dict[str, Any]) -> None:
         # CPython implicitly wraps these hooks as classmethod when they are plain functions.
         for name in ("__init_subclass__", "__class_getitem__"):
@@ -136,13 +145,12 @@ class StatementMixin:
                 f"TypeAlias target not supported: {node.name.__class__.__name__}"
             )
 
-        type_param_bindings: Dict[str, Any] = {}
-        type_params: list[Any] = []
-        for type_param_node in node.type_params:
-            type_param = self._build_type_param(type_param_node, scope, type_param_bindings)
-            type_param_bindings[type_param_node.name] = type_param
-            type_params.append(type_param)
+        type_params = self._build_type_params(node.type_params, scope)
 
+        type_param_bindings = {
+            type_param_node.name: type_param
+            for type_param_node, type_param in zip(node.type_params, type_params)
+        }
         alias_eval_scope = _TypeAliasEvalScope(scope, type_param_bindings)
         alias_value = self.eval_expr(node.value, alias_eval_scope)
         alias = self._typing_runtime_call(
@@ -150,7 +158,7 @@ class StatementMixin:
             py_typing.TypeAliasType,
             node.name.id,
             alias_value,
-            type_params=tuple(type_params),
+            type_params=type_params,
         )
 
         scope.store(node.name.id, alias)
@@ -583,6 +591,7 @@ class StatementMixin:
         fn_table = scope.code.lookup_function_table(node)
         fn_scope_info = scope.code.scope_info_for(fn_table)
         closure = {name: scope.capture_cell(name) for name in fn_scope_info.frees}
+        type_params = self._build_type_params(getattr(node, "type_params", ()) or (), scope)
 
         return UserFunction(
             interpreter=self,
@@ -598,6 +607,7 @@ class StatementMixin:
             is_async=is_async,
             is_async_generator=is_async and contains_yield,
             qualname=self._qualname_for_definition(node.name, scope),
+            type_params=type_params,
         )
 
     def exec_FunctionDef(self, node: ast.FunctionDef, scope: RuntimeScope) -> None:

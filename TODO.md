@@ -87,6 +87,10 @@ Use this section as the source of truth for intentional exclusions.
 - Progress (2026-02-27, iter 006): Mirrored CPython class construction behavior by implicitly wrapping interpreted `__init_subclass__` and `__class_getitem__` hooks as `classmethod` when undecorated in class bodies, preventing missing-`cls` hook invocation errors.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "init_subclass or class_getitem" -q` => `2 passed`; `uv run pytest tests/test_core_semantics.py -q` => `69 passed, 3 skipped`.
 - Expected full-probe delta on next rerun: suite-error signature `TypeError: __init_subclass__() missing required argument 'cls'` should drop from `8` toward `0` (pending measurement).
+- Progress (2026-02-27, iter 007): Added function type-parameter materialization on interpreted `UserFunction` objects (`__type_params__` defaults to `()` and is populated for `def f[T](...)`), with regression tests for both non-generic and generic definitions.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "user_function_exposes_empty_type_params or generic_function_records_type_params_without_scope_leak" -q` => `2 passed`; `uv run pytest tests/test_core_semantics.py -k "type_params or typealias" -q` => `4 passed`; `uv run pytest tests/test_core_semantics.py -q` => `71 passed, 3 skipped`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_type_params.py`): suite `errors` `25 -> 19` (`-6`), and suite-error signature `AttributeError: 'UserFunction' object has no attribute '__type_params__'` `7 -> 0`.
+- Expected full-probe delta on next rerun: suite-error signature `AttributeError: 'UserFunction' object has no attribute '__type_params__'` should drop from `7` toward `0` (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.
