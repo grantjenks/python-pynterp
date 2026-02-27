@@ -81,6 +81,9 @@ Use this section as the source of truth for intentional exclusions.
 - Progress (2026-02-27, iter 004): Added runtime `_interpreters.run_func` compatibility adapter that retries `UserFunction` arguments as synthesized native `def` functions (with explicit `ValueError` validation for unsupported args/closures/non-`None` returns), and applied module patching on both import and runtime-call return paths.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "interpreters_run_func"` => `2 passed`; `uv run pytest tests/test_core_semantics.py` => `67 passed, 3 skipped`; targeted CPython 3.14 diagnostic (`RunFuncTests`) => `5 passed, 1 error` (remaining error is policy-blocked `__code__` access, not `run_func` arg-type mismatch).
 - Expected full-probe delta on next rerun: suite-error signature `TypeError: _interpreters.run_func() argument 2 must be a function, not UserFunction` should drop from `9` toward `0` (pending measurement).
+- Progress (2026-02-27, iter 005): Removed shared `tempcwd` probe-worker race by remapping `test.support.os_helper.temp_cwd()` default directory to a PID-scoped name inside the runner (`tempcwd-<pid>`) and cleaning only that worker-local path.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k tempcwd -q` => `1 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `5 passed`; targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_tools/test_msgfmt.py`) => `14 run, 0 errors`.
+- Expected full-probe delta on next rerun: suite-error signature `FileNotFoundError: [Errno 2] No such file or directory: 'messages.po'` should drop from `15` toward `0` (pending measurement).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

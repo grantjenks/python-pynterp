@@ -37,6 +37,7 @@ from pathlib import Path
 import builtins
 import io
 import json
+import os
 import shutil
 import sys
 import types
@@ -58,9 +59,11 @@ from pynterp import Interpreter
 def emit(payload):
     print("{RESULT_MARKER}" + json.dumps(payload))
 
-def cleanup_probe_workdir():
-    # Keep probe runs isolated from stale temp_cwd artifacts left by prior modules.
-    stale = Path.cwd() / "tempcwd"
+def patch_temp_cwd_probe():
+    # Avoid cross-worker races in shared cwd by remapping temp_cwd()'s
+    # default "tempcwd" directory to a process-unique name.
+    worker_tempcwd = f"tempcwd-{{os.getpid()}}"
+    stale = Path.cwd() / worker_tempcwd
     try:
         if stale.is_symlink() or stale.is_file():
             stale.unlink()
@@ -69,7 +72,21 @@ def cleanup_probe_workdir():
     except OSError:
         pass
 
-cleanup_probe_workdir()
+    try:
+        from test.support import os_helper
+    except Exception:
+        return
+
+    original_temp_cwd = os_helper.temp_cwd
+
+    def wrapped_temp_cwd(name="tempcwd", quiet=False):
+        if name == "tempcwd":
+            name = worker_tempcwd
+        return original_temp_cwd(name=name, quiet=quiet)
+
+    os_helper.temp_cwd = wrapped_temp_cwd
+
+patch_temp_cwd_probe()
 
 def patch_system_limit_probe():
     # Some sandboxed environments raise PermissionError for sysconf sem-limit

@@ -89,12 +89,36 @@ class ModuleFixtureCase(unittest.TestCase):
     assert payload["errors"] == 0
 
 
-def test_run_case_cleans_stale_tempcwd(tmp_path: Path) -> None:
+def test_run_case_isolates_default_tempcwd_name(tmp_path: Path) -> None:
     probe = load_probe_module()
     cpython_root = tmp_path / "cpython"
     lib_root = cpython_root / "Lib"
     test_root = lib_root / "test"
     test_root.mkdir(parents=True)
+    support_root = test_root / "support"
+    support_root.mkdir()
+    (test_root / "__init__.py").write_text("", encoding="utf-8")
+    (support_root / "__init__.py").write_text("", encoding="utf-8")
+    (support_root / "os_helper.py").write_text(
+        """
+import contextlib
+import os
+import shutil
+
+@contextlib.contextmanager
+def temp_cwd(name='tempcwd', quiet=False):
+    os.mkdir(name)
+    saved = os.getcwd()
+    os.chdir(name)
+    try:
+        yield os.getcwd()
+    finally:
+        os.chdir(saved)
+        shutil.rmtree(name, ignore_errors=True)
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
     (cpython_root / "tempcwd").mkdir()
 
     test_path = test_root / "test_stale_tempcwd.py"
@@ -103,8 +127,10 @@ def test_run_case_cleans_stale_tempcwd(tmp_path: Path) -> None:
 import os
 import shutil
 import unittest
+from test.support.os_helper import temp_cwd
 
 def setUpModule():
+    shutil.rmtree("tempcwd", ignore_errors=True)
     os.mkdir("tempcwd")
 
 def tearDownModule():
@@ -112,7 +138,10 @@ def tearDownModule():
 
 class TempCwdCase(unittest.TestCase):
     def test_ok(self):
-        self.assertTrue(True)
+        with temp_cwd():
+            with open("messages.po", "w", encoding="utf-8") as fh:
+                fh.write("msgid \\"x\\"\\nmsgstr \\"y\\"\\n")
+            self.assertTrue(os.path.exists("messages.po"))
 """.strip()
         + "\n",
         encoding="utf-8",
