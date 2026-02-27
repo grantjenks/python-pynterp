@@ -7,7 +7,7 @@
 - Probe baseline source: CPython `origin/3.14` (`a58ea8c2123`)
 - Probe command: `scripts/cpython_pynterp_probe.py --basis tests --mode module`
 - Default unsupported filters: `__import__`, `__dict__`, `__code__`
-- Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter001.json`
+- Latest full probe artifact: `/tmp/pynterp-probe-tests-module-20260227-iter057.json`
 
 ## Compatibility Snapshot
 
@@ -23,16 +23,16 @@
 
 ### Latest full probe result recorded
 
-From full module/tests probe run on `2026-02-27` (`/tmp/pynterp-probe-tests-module-20260227-iter001.json`):
+From full module/tests probe run on `2026-02-27` (`/tmp/pynterp-probe-tests-module-20260227-iter057.json`):
 
-- applicable files: `515 / 762` (`67.59%`)
-- estimated individual tests: `15,686`
-- pass: `12,665` (`+924` vs `iter-009`)
-- skip: `1,305` (`-2` vs `iter-009`)
-- fail: `1,716` (`-955` vs `iter-009`)
-- pass+skip rate: `89.06%` (`+6.05pp` vs `iter-009`)
-- top fail categories: `TIMEOUT (751)`, `ModuleNotFound/'_tkinter' (470)`, `Suite/Error (238)`, `Suite/Failure (173)`
-- top suite-error signatures: `when serializing pynterp.functions.UserFunction object (25)`, `__code__ blocked (22)`, `messages.po missing (15)`, `importlib.metadata missing (12)`, `_interpreters.run_func() arg 2 type mismatch (9)`
+- applicable files: `501 / 762` (`65.75%`)
+- estimated individual tests: `15,823` (`+137` vs `iter001`)
+- pass: `13,362` (`+697` vs `iter001`)
+- skip: `1,371` (`+66` vs `iter001`)
+- fail: `1,090` (`-626` vs `iter001`)
+- pass+skip rate: `93.11%` (`+4.05pp` vs `iter001`)
+- top fail categories: `TIMEOUT (478)`, `ModuleNotFound/'_tkinter' (470)`, `Suite/Failure (106)`, `NameError (30)`, `Suite/Error (15)`
+- top suite-error signatures: `AttributeError: 'generator' object has no attribute 'ag_code'. Did you mean: 'gi_code'? (12)`, `+------------------------------------ (2)`, `FileExistsError: [Errno 17] File exists: '.../lib/python3.14/encodings' (1)`
 
 ## Explicit Skip Policy
 
@@ -281,6 +281,11 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "unittest_loader or unittest_expected_failure_marker" -q` => `3 passed`; `uv run pytest tests/test_core_semantics.py -k "functools_wraps_keeps_wrapper_behavior_for_user_function or unittest_loader" -q` => `3 passed` (includes new regression `test_unittest_expected_failure_marker_on_user_function_method_is_honored`).
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_pulldom.py`): suite `errors` `1 -> 0` (`-1`), `failures` `2 -> 0` (`-2`), and `expected_failures` `0 -> 3` (`+3`); eliminated the remaining non-policy suite-error signature `TypeError: 'NoneType' object is not subscriptable` (`1 -> 0`) by correctly classifying the decorated case as expected failure.
 - Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `1` from `Lib/test/test_pulldom.py`; related `Suite/Failure` assertions in that module should also decrease by `2` via expected-failure reclassification.
+- Progress (2026-02-27, iter 057): Re-ran the full module/tests probe (`/tmp/pynterp-probe-tests-module-20260227-iter057.json`): supported `Suite/Error` category `238 -> 15` (`-223`) and pass+skip rate `89.06% -> 93.11%` (`+4.05pp`) vs `iter001`; remaining supported suite-error files were concentrated in `Lib/test/test_asyncio/test_graph.py` (`14`) and `Lib/test/test_venv.py` (`1`).
+- Progress (2026-02-27, iter 057 follow-up): Added `safe_getattr(..., "ag_code")` compatibility aliasing for generator-backed interpreter frames (specialized interpreted async-generator metadata + `gi_code` fallback), plus regression coverage for interpreted async-generator frame `ag_code` access.
+- Local checks: `uv run pytest tests/test_core_semantics.py -k "ag_code_alias or attr_guard_allows_async_generator_frame_but_keeps_frame_pivots_blocked" -q` => `2 passed`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_asyncio/test_graph.py`): suite `errors` `14 -> 0` (`-14`) and `failures` `2 -> 16` (`+14`); eliminated suite-error signatures `AttributeError: 'generator' object has no attribute 'ag_code'. Did you mean: 'gi_code'?` (`12 -> 0`) and `+------------------------------------` (`2 -> 0`).
+- Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `14` from `Lib/test/test_asyncio/test_graph.py`; expected remaining supported suite-error hotspot from `iter057` is `Lib/test/test_venv.py` (`FileExistsError .../encodings`, `1`).
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

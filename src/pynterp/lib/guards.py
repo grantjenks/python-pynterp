@@ -33,6 +33,59 @@ _BLOCKED_ATTR_NAMES = frozenset(
 _MISSING = object()
 
 
+class _CodeMetadataAlias:
+    __slots__ = ("co_name", "co_qualname", "co_filename", "co_firstlineno")
+
+    def __init__(self, *, name: str, qualname: str, filename: str, firstlineno: int) -> None:
+        self.co_name = name
+        self.co_qualname = qualname
+        self.co_filename = filename
+        self.co_firstlineno = firstlineno
+
+
+def _interpreted_async_generator_ag_code_alias(obj: Any) -> Any:
+    gi_code = getattr(obj, "gi_code", _MISSING)
+    if gi_code is _MISSING or getattr(gi_code, "co_name", None) != "async_gen_runner":
+        return _MISSING
+
+    gi_frame = getattr(obj, "gi_frame", _MISSING)
+    if gi_frame is _MISSING or gi_frame is None:
+        return _MISSING
+
+    frame_locals = getattr(gi_frame, "f_locals", _MISSING)
+    if not isinstance(frame_locals, dict):
+        return _MISSING
+
+    node = frame_locals.get("node")
+    call_scope = frame_locals.get("call_scope")
+
+    name = getattr(node, "name", None)
+    qualname = getattr(call_scope, "qualname", None)
+    if not isinstance(name, str) or not name:
+        return _MISSING
+    if not isinstance(qualname, str) or not qualname:
+        qualname = name
+
+    filename = getattr(gi_code, "co_filename", "<pynterp>")
+    if not isinstance(filename, str):
+        filename = "<pynterp>"
+
+    firstlineno = getattr(gi_code, "co_firstlineno", 0)
+    try:
+        firstlineno = int(firstlineno)
+    except (TypeError, ValueError):
+        firstlineno = 0
+    if firstlineno < 0:
+        firstlineno = 0
+
+    return _CodeMetadataAlias(
+        name=name,
+        qualname=qualname,
+        filename=filename,
+        firstlineno=firstlineno,
+    )
+
+
 def is_blocked_attr(name: str) -> bool:
     return name in _BLOCKED_ATTR_NAMES
 
@@ -83,6 +136,14 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
             return raw_getattribute(*args, **kwargs)
 
         return guarded_getattribute
+
+    if name == "ag_code":
+        alias = _interpreted_async_generator_ag_code_alias(obj)
+        if alias is not _MISSING:
+            return alias
+        generic_generator_code = getattr(obj, "gi_code", _MISSING)
+        if generic_generator_code is not _MISSING:
+            return generic_generator_code
 
     guard_attr_name(name)
     if default:

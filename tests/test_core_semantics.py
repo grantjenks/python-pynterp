@@ -2391,6 +2391,25 @@ RESULT = (frame is not None, ag.ag_running, blocked_info)
     )
 
 
+def test_async_generator_frame_generator_exposes_ag_code_alias(run_interpreter):
+    source = """
+async def gen():
+    yield 1
+
+ag = gen()
+step = ag.asend(None)
+try:
+    _ = step.send(None)
+except Exception:
+    pass
+frame = ag.ag_frame
+RESULT = frame.f_generator.ag_code.co_name
+"""
+    env = run_interpreter(source)
+    assert isinstance(env["RESULT"], str)
+    assert "gen" in env["RESULT"]
+
+
 def test_attr_guard_allows_class_bases_but_blocks_subclasses(run_interpreter):
     source = """
 class Derived(list):
