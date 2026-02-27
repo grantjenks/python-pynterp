@@ -142,6 +142,35 @@ def fake_len(_value):
     assert rebound_result == 3
 
 
+def test_runtime_module_patch_avoids_user_class_descriptor_side_effects(run_interpreter):
+    source = """
+class C(object):
+    def __getattribute__(self, name):
+        if name == "__class__":
+            raise RuntimeError
+        return object.__getattribute__(self, name)
+
+def assert_raises(exc_type, func, *args):
+    try:
+        func(*args)
+    except exc_type:
+        return True
+    raise AssertionError
+
+def run_case():
+    c = C()
+    assert_raises(RuntimeError, isinstance, c, bool)
+    class D:
+        pass
+    assert_raises(RuntimeError, isinstance, c, D)
+    return True
+
+RESULT = run_case()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] is True
+
+
 def test_globals_builtin_returns_interpreted_module_namespace() -> None:
     source = """
 def foo():
