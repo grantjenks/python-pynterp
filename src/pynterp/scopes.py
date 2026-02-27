@@ -217,10 +217,12 @@ class ClassBodyScope(RuntimeScope):
         builtins_dict: dict,
         outer_scope: RuntimeScope,
         class_ns: Dict[str, Any],
+        class_cell: Cell | None = None,
     ):
         super().__init__(code, globals_dict, builtins_dict)
         self.outer_scope = outer_scope
         self.class_ns = class_ns
+        self.class_cell = class_cell
 
     def load(self, name: str) -> Any:
         if name in self.class_ns:
@@ -241,6 +243,8 @@ class ClassBodyScope(RuntimeScope):
         raise NameError(name)
 
     def capture_cell(self, name: str) -> Cell:
+        if name == "__class__" and self.class_cell is not None:
+            return self.class_cell
         return self.outer_scope.capture_cell(name)
 
 

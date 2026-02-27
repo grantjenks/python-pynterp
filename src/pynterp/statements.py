@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from typing import Any, Dict, Iterator
 
-from .common import BreakSignal, ContinueSignal, ControlFlowSignal, ReturnSignal
+from .common import BreakSignal, Cell, ContinueSignal, ControlFlowSignal, ReturnSignal
 from .functions import UserFunction
 from .scopes import ClassBodyScope, RuntimeScope
 from .symtable_utils import _contains_yield
@@ -15,6 +15,13 @@ class StatementMixin:
 
     def exec_Pass(self, node: ast.Pass, scope: RuntimeScope) -> None:
         return
+
+    def exec_Assert(self, node: ast.Assert, scope: RuntimeScope) -> None:
+        if self.eval_expr(node.test, scope):
+            return
+        if node.msg is None:
+            raise AssertionError
+        raise AssertionError(self.eval_expr(node.msg, scope))
 
     def exec_Assign(self, node: ast.Assign, scope: RuntimeScope) -> None:
         val = self.eval_expr(node.value, scope)
@@ -148,13 +155,20 @@ class StatementMixin:
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
         class_ns.setdefault("__qualname__", node.name)
+        class_cell = Cell()
 
         body_scope = ClassBodyScope(
-            scope.code, scope.globals, scope.builtins, outer_scope=scope, class_ns=class_ns
+            scope.code,
+            scope.globals,
+            scope.builtins,
+            outer_scope=scope,
+            class_ns=class_ns,
+            class_cell=class_cell,
         )
         self.exec_block(node.body, body_scope)
 
         cls = meta(node.name, tuple(bases), class_ns, **kw)
+        class_cell.value = cls
 
         decorated: Any = cls
         for dec_node in reversed(node.decorator_list or []):
@@ -287,6 +301,15 @@ class StatementMixin:
             yield from self.g_assign_target(tgt, val, scope)
         return
 
+    def g_exec_Assert(self, node: ast.Assert, scope: RuntimeScope) -> Iterator[Any]:
+        test = yield from self.g_eval_expr(node.test, scope)
+        if test:
+            return
+        if node.msg is None:
+            raise AssertionError
+        msg = yield from self.g_eval_expr(node.msg, scope)
+        raise AssertionError(msg)
+
     def g_exec_AnnAssign(self, node: ast.AnnAssign, scope: RuntimeScope) -> Iterator[Any]:
         if node.value is not None:
             val = yield from self.g_eval_expr(node.value, scope)
@@ -418,14 +441,21 @@ class StatementMixin:
         class_ns: Dict[str, Any] = {}
         class_ns.setdefault("__module__", scope.globals.get("__name__", "__main__"))
         class_ns.setdefault("__qualname__", node.name)
+        class_cell = Cell()
 
         body_scope = ClassBodyScope(
-            scope.code, scope.globals, scope.builtins, outer_scope=scope, class_ns=class_ns
+            scope.code,
+            scope.globals,
+            scope.builtins,
+            outer_scope=scope,
+            class_ns=class_ns,
+            class_cell=class_cell,
         )
         # class body itself cannot yield (syntax), so normal exec is OK:
         self.exec_block(node.body, body_scope)
 
         cls = meta(node.name, tuple(bases), class_ns, **kw)
+        class_cell.value = cls
 
         decorated: Any = cls
         for dec_node in reversed(node.decorator_list or []):

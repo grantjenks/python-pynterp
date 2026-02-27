@@ -251,19 +251,31 @@ class HelperMixin:
         if node.args.kwarg is not None and not is_bound(node.args.kwarg.arg):
             call_scope.store(node.args.kwarg.arg, {})
 
+        if not hasattr(self, "_call_stack"):
+            self._call_stack = []
+        frame = (func_obj, call_scope)
+
         # normal function executes immediately
         if not func_obj.is_generator:
+            self._call_stack.append(frame)
             try:
-                self.exec_block(node.body, call_scope)
-            except ReturnSignal as r:
-                return r.value
-            return None
+                try:
+                    self.exec_block(node.body, call_scope)
+                except ReturnSignal as r:
+                    return r.value
+                return None
+            finally:
+                self._call_stack.pop()
 
         # generator function returns a real Python generator to allow pausing/resuming
         def runner():
+            self._call_stack.append(frame)
             try:
-                yield from self.g_exec_block(node.body, call_scope)
-            except ReturnSignal as r:
-                return r.value
+                try:
+                    yield from self.g_exec_block(node.body, call_scope)
+                except ReturnSignal as r:
+                    return r.value
+            finally:
+                self._call_stack.pop()
 
         return runner()

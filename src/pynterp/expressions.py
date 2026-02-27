@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import ast
+import builtins
 from typing import Any, Dict, Iterator
 
+from .common import UNBOUND
 from .scopes import ComprehensionScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
+
+_NO_SUPER = object()
 
 
 class ExpressionMixin:
@@ -27,6 +31,33 @@ class ExpressionMixin:
             if not isinstance(key, str):
                 raise TypeError("keywords must be strings")
             self._store_keyword(func, kwargs, key, mapping[key])
+
+    def _maybe_zero_arg_super(self, func: Any, args: list[Any], kwargs: Dict[str, Any]) -> Any:
+        if func is not builtins.super or args or kwargs:
+            return _NO_SUPER
+
+        call_stack = getattr(self, "_call_stack", [])
+        if not call_stack:
+            return _NO_SUPER
+
+        func_obj, call_scope = call_stack[-1]
+        class_cell = func_obj.closure.get("__class__")
+        if class_cell is None or class_cell.value is UNBOUND:
+            raise RuntimeError("super(): __class__ cell not found")
+
+        params = (getattr(func_obj.node.args, "posonlyargs", []) or []) + (
+            getattr(func_obj.node.args, "args", []) or []
+        )
+        if not params:
+            raise RuntimeError("super(): no arguments")
+
+        first_arg_name = params[0].arg
+        try:
+            first_arg_value = call_scope.load(first_arg_name)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            raise RuntimeError("super(): no arguments") from exc
+
+        return builtins.super(class_cell.value, first_arg_value)
 
     def eval_Constant(self, node: ast.Constant, scope: RuntimeScope) -> Any:
         return node.value
@@ -84,7 +115,12 @@ class ExpressionMixin:
 
     def eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Any:
         func = self.eval_expr(node.func, scope)
-        args = [self.eval_expr(a, scope) for a in node.args]
+        args: list[Any] = []
+        for arg in node.args:
+            if isinstance(arg, ast.Starred):
+                args.extend(self.eval_expr(arg.value, scope))
+            else:
+                args.append(self.eval_expr(arg, scope))
         kwargs: Dict[str, Any] = {}
         for kw in node.keywords:
             if kw.arg is None:
@@ -93,6 +129,9 @@ class ExpressionMixin:
             else:
                 value = self.eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
+        super_value = self._maybe_zero_arg_super(func, args, kwargs)
+        if super_value is not _NO_SUPER:
+            return super_value
         return func(*args, **kwargs)
 
     def eval_List(self, node: ast.List, scope: RuntimeScope) -> list:
@@ -132,6 +171,26 @@ class ExpressionMixin:
 
     def eval_Slice(self, node: ast.Slice, scope: RuntimeScope) -> slice:
         return self._eval_slice(node, scope)
+
+    def eval_FormattedValue(self, node: ast.FormattedValue, scope: RuntimeScope) -> str:
+        value = self.eval_expr(node.value, scope)
+
+        if node.conversion == 115:  # !s
+            value = str(value)
+        elif node.conversion == 114:  # !r
+            value = repr(value)
+        elif node.conversion == 97:  # !a
+            value = ascii(value)
+        elif node.conversion != -1:
+            raise NotImplementedError(f"Unsupported f-string conversion {node.conversion!r}")
+
+        if node.format_spec is not None:
+            spec = self.eval_expr(node.format_spec, scope)
+            return format(value, spec)
+        return format(value, "")
+
+    def eval_JoinedStr(self, node: ast.JoinedStr, scope: RuntimeScope) -> str:
+        return "".join(str(self.eval_expr(part, scope)) for part in node.values)
 
     # ---- comprehensions (normal) ----
 
@@ -337,9 +396,12 @@ class ExpressionMixin:
 
     def g_eval_Call(self, node: ast.Call, scope: RuntimeScope) -> Iterator[Any]:
         func = yield from self.g_eval_expr(node.func, scope)
-        args = []
-        for a in node.args:
-            args.append((yield from self.g_eval_expr(a, scope)))
+        args: list[Any] = []
+        for arg in node.args:
+            if isinstance(arg, ast.Starred):
+                args.extend((yield from self.g_eval_expr(arg.value, scope)))
+            else:
+                args.append((yield from self.g_eval_expr(arg, scope)))
         kwargs: Dict[str, Any] = {}
         for kw in node.keywords:
             if kw.arg is None:
@@ -348,6 +410,9 @@ class ExpressionMixin:
             else:
                 value = yield from self.g_eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
+        super_value = self._maybe_zero_arg_super(func, args, kwargs)
+        if super_value is not _NO_SUPER:
+            return super_value
         return func(*args, **kwargs)
 
     def g_eval_List(self, node: ast.List, scope: RuntimeScope) -> Iterator[list]:
@@ -393,6 +458,29 @@ class ExpressionMixin:
         hi = (yield from self.g_eval_expr(node.upper, scope)) if node.upper else None
         st = (yield from self.g_eval_expr(node.step, scope)) if node.step else None
         return slice(lo, hi, st)
+
+    def g_eval_FormattedValue(self, node: ast.FormattedValue, scope: RuntimeScope) -> Iterator[str]:
+        value = yield from self.g_eval_expr(node.value, scope)
+
+        if node.conversion == 115:  # !s
+            value = str(value)
+        elif node.conversion == 114:  # !r
+            value = repr(value)
+        elif node.conversion == 97:  # !a
+            value = ascii(value)
+        elif node.conversion != -1:
+            raise NotImplementedError(f"Unsupported f-string conversion {node.conversion!r}")
+
+        if node.format_spec is not None:
+            spec = yield from self.g_eval_expr(node.format_spec, scope)
+            return format(value, spec)
+        return format(value, "")
+
+    def g_eval_JoinedStr(self, node: ast.JoinedStr, scope: RuntimeScope) -> Iterator[str]:
+        parts = []
+        for part in node.values:
+            parts.append(str((yield from self.g_eval_expr(part, scope))))
+        return "".join(parts)
 
     # comprehensions (generator-mode)
     def g_eval_ListComp(self, node: ast.ListComp, scope: RuntimeScope) -> Iterator[list]:

@@ -1,10 +1,24 @@
 from __future__ import annotations
+import __future__
 
+import ast
+import builtins
 import math
+import pathlib
+import symtable
+import types
+import typing
 from types import ModuleType
 
 SAFE_STDLIB_MODULES: dict[str, ModuleType] = {
+    "__future__": __future__,
+    "ast": ast,
+    "builtins": builtins,
     "math": math,
+    "pathlib": pathlib,
+    "symtable": symtable,
+    "types": types,
+    "typing": typing,
 }
 
 

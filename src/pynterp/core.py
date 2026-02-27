@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterator, Optional, Set
 
-from pynterp.lib import import_safe_stdlib_module, make_safe_env
+from pynterp.lib import (
+    InterpretedModuleLoader,
+    import_safe_stdlib_module,
+    make_bootstrap_env,
+    make_safe_env,
+)
 
 from .code import ModuleCode
 from .scopes import ModuleScope, RuntimeScope
@@ -60,6 +66,31 @@ class InterpreterCore:
         else:
             raise TypeError("env must be dict or None")
         return make_safe_env(self._restricted_import, env=base, name=name)
+
+    def make_bootstrap_env(
+        self,
+        *,
+        package_root: str | Path,
+        package_name: str = "pynterp",
+        env: Optional[dict] = None,
+        name: str = "__main__",
+    ) -> dict:
+        if env is None:
+            base: Dict[str, Any] = {}
+        elif isinstance(env, dict):
+            base = dict(env)
+        else:
+            raise TypeError("env must be dict or None")
+
+        loader = InterpretedModuleLoader(
+            self,
+            package_name=package_name,
+            package_root=package_root,
+            fallback_importer=self._restricted_import,
+        )
+        out = make_bootstrap_env(loader.import_module, env=base, name=name)
+        out.setdefault("__module_loader__", loader)
+        return out
 
     # ----- run -----
 
