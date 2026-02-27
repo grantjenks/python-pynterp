@@ -70,6 +70,21 @@ def _contains_non_none_return(fn_node: ast.FunctionDef) -> bool:
     return False
 
 
+def _lambda_to_function_def(lambda_node: ast.Lambda) -> ast.FunctionDef:
+    func_kwargs: dict[str, Any] = {
+        "name": "__pynterp_run_func_target__",
+        "args": lambda_node.args,
+        "body": [ast.Return(value=lambda_node.body)],
+        "decorator_list": [],
+        "returns": None,
+        "type_comment": None,
+    }
+    if "type_params" in ast.FunctionDef._fields:
+        func_kwargs["type_params"] = []
+    function_node = ast.FunctionDef(**func_kwargs)
+    return ast.copy_location(function_node, lambda_node)
+
+
 def _build_user_function_signature(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     defaults: list[Any],
@@ -138,31 +153,34 @@ def _build_user_function_signature(
 def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:
     """Convert an interpreted function into a native function for _interpreters.run_func()."""
     node = func.node
-    if not isinstance(node, ast.FunctionDef):
+    if isinstance(node, ast.Lambda):
+        prepared_node = _lambda_to_function_def(copy.deepcopy(node))
+    elif isinstance(node, ast.FunctionDef):
+        prepared_node = copy.deepcopy(node)
+    else:
         raise ValueError("_interpreters.run_func() requires a function defined with 'def'")
     if func.is_generator or func.is_async or func.is_async_generator:
         raise ValueError("_interpreters.run_func() does not support generators or async functions")
     if func.closure:
         raise ValueError("_interpreters.run_func() does not support closures")
 
-    args = node.args
+    args = prepared_node.args
     has_args = bool(args.posonlyargs or args.args or args.vararg or args.kwonlyargs or args.kwarg)
     if has_args:
         raise ValueError("_interpreters.run_func() requires a function that takes no arguments")
-    if _contains_non_none_return(node):
+    if _contains_non_none_return(prepared_node):
         raise ValueError("_interpreters.run_func() does not support non-None return values")
 
-    cloned = copy.deepcopy(node)
-    cloned.name = "__pynterp_run_func_target__"
-    cloned.decorator_list = []
-    module = ast.Module(body=[cloned], type_ignores=[])
+    prepared_node.name = "__pynterp_run_func_target__"
+    prepared_node.decorator_list = []
+    module = ast.Module(body=[prepared_node], type_ignores=[])
     ast.fix_missing_locations(module)
 
     namespace = dict(func.globals)
     namespace.setdefault("__builtins__", func.builtins)
     compiled = compile(module, func.code.filename, "exec")
     exec(compiled, namespace, namespace)
-    return namespace[cloned.name]
+    return namespace[prepared_node.name]
 
 
 class BoundMethod:

@@ -2319,10 +2319,9 @@ def test_asyncio_format_helpers_resolves_user_function_source():
 def test_interpreters_run_func_accepts_interpreted_function():
     pytest.importorskip("_interpreters")
     source = """
-from test.support import import_helper
 import os
 
-_interpreters = import_helper.import_module("_interpreters")
+import _interpreters
 interp = _interpreters.create()
 r, w = os.pipe()
 
@@ -2355,9 +2354,7 @@ finally:
 def test_interpreters_run_func_rejects_interpreted_function_with_args():
     pytest.importorskip("_interpreters")
     source = """
-from test.support import import_helper
-
-_interpreters = import_helper.import_module("_interpreters")
+import _interpreters
 interp = _interpreters.create()
 
 def script(arg):
@@ -2379,6 +2376,32 @@ finally:
     }
     interpreter.run(source, env=env, filename="<interpreters_run_func_args>")
     assert env["RESULT"][0] == "ValueError"
+
+
+def test_interpreters_run_func_lambda_preserves_shared_encoding_errors():
+    pytest.importorskip("_interpreters")
+    source = """
+import _interpreters
+interp = _interpreters.create()
+bad_shared = {"\\ud82a": 0}
+
+try:
+    _interpreters.run_func(interp, lambda: None, shared=bad_shared)
+except Exception as exc:
+    RESULT = (type(exc).__name__, str(exc))
+finally:
+    _interpreters.destroy(interp)
+"""
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<interpreters_run_func_lambda_shared_encoding>",
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(source, env=env, filename="<interpreters_run_func_lambda_shared_encoding>")
+    assert env["RESULT"][0] == "UnicodeEncodeError"
+    assert "surrogates not allowed" in env["RESULT"][1]
 
 
 @pytest.mark.skipif(not HAS_TEMPLATE_STR, reason="TemplateStr requires Python 3.14+")
