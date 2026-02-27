@@ -286,6 +286,10 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_core_semantics.py -k "ag_code_alias or attr_guard_allows_async_generator_frame_but_keeps_frame_pivots_blocked" -q` => `2 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_asyncio/test_graph.py`): suite `errors` `14 -> 0` (`-14`) and `failures` `2 -> 16` (`+14`); eliminated suite-error signatures `AttributeError: 'generator' object has no attribute 'ag_code'. Did you mean: 'gi_code'?` (`12 -> 0`) and `+------------------------------------` (`2 -> 0`).
 - Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `14` from `Lib/test/test_asyncio/test_graph.py`; expected remaining supported suite-error hotspot from `iter057` is `Lib/test/test_venv.py` (`FileExistsError .../encodings`, `1`).
+- Progress (2026-02-27, iter 058): Normalized probe-worker `sys.path` in the embedded runner to prefer injected CPython `Lib` as the canonical stdlib root (drop host stdlib path only when probe `Lib` looks like a full stdlib), preventing duplicate-stdlib scans in `test_venv` synthetic non-installed-python setup.
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
+- Targeted CPython 3.14 diagnostic (`run_case` on `Lib/test/test_venv.py`): eliminated suite-error signature `FileExistsError: [Errno 17] File exists: '.../lib/python3.14/encodings'` (`1 -> 0`) while overall suite `errors` stayed `18` locally due unrelated macOS dylib subprocess aborts in this environment.
+- Expected full-probe delta on next rerun: supported `Suite/Error` should decrease by at least `1` from `Lib/test/test_venv.py` by removing the remaining non-policy `encodings` collision.
 
 3. Reduce timeout-heavy modules.
 - Target files: `test_asyncio/test_events.py`, `test_queue.py`, `test_sched.py`, `test_thread.py`, `test_zipfile64.py`.

@@ -105,6 +105,58 @@ except Exception:
 sys.path.insert(0, str(pynterp_src))
 sys.path.insert(0, str(lib_root))
 
+def patch_sys_path_probe():
+    # Probe workers should execute against the injected CPython Lib tree.
+    # Drop the host stdlib path so stdlib-scanning tests don't see duplicate
+    # stdlib roots (which can cause collisions on copied package dirs).
+    try:
+        import sysconfig
+    except Exception:
+        return
+
+    stdlib_path = sysconfig.get_path("stdlib")
+    if not stdlib_path:
+        return
+
+    try:
+        host_stdlib = Path(stdlib_path).resolve()
+        probe_lib_root = Path(lib_root).resolve()
+    except Exception:
+        return
+
+    if not (probe_lib_root / "os.py").is_file():
+        return
+    has_sysconfig = (probe_lib_root / "sysconfig.py").is_file() or (
+        probe_lib_root / "sysconfig" / "__init__.py"
+    ).is_file()
+    if not has_sysconfig:
+        return
+
+    if host_stdlib == probe_lib_root:
+        return
+
+    filtered = []
+    seen = set()
+    for entry in sys.path:
+        entry_text = entry if isinstance(entry, str) else str(entry)
+        try:
+            resolved = Path(entry_text).resolve()
+        except Exception:
+            resolved = None
+
+        if resolved is not None and resolved == host_stdlib:
+            continue
+
+        key = str(resolved) if resolved is not None else entry_text
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered.append(entry_text)
+
+    sys.path[:] = filtered
+
+patch_sys_path_probe()
+
 from pynterp import Interpreter
 
 def emit(payload):
