@@ -106,3 +106,51 @@ RESULT = getter(probe, "interpreter")
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_interpreter_probe>")
+
+
+def test_function_closure_cell_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+RESULT = fn.__closure__[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<closure_cell_probe>")
+
+
+def test_reduction_hook_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+RESULT = target.__reduce_ex__(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<reduce_hook_probe>")
+
+
+def test_object_getattribute_cannot_reach_reduction_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = object.__getattribute__
+RESULT = getter(target, "__reduce_ex__")(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_reduce_hook_probe>")

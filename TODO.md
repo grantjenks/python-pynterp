@@ -40,7 +40,9 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Add adversarial tests for: traceback/frame pivot chains, descriptor abuse, `super()`/MRO tricks, pickling/reduction hooks, closure/cell leaks, metaclass abuse, async/generator frame tricks, and import smuggling.
 - Done when: `tests/test_sandbox_security.py` has broad attack coverage and every new blocked path has a regression test.
 - Progress (2026-02-27, iteration 1): added regression tests for interpreter-policy pivot attempts (`probe.interpreter...` and `object.__getattribute__(probe, "interpreter")`) and removed direct `UserFunction -> Interpreter` attribute exposure.
+- Progress (2026-02-27, iteration 2): added regression tests for closure/cell leak pivots (`fn.__closure__[0].cell_contents`), direct `__reduce_ex__` reduction-hook access, and `object.__getattribute__` reduction-hook bypass attempts.
 - Metrics: `tests/test_sandbox_security.py` cases 6 -> 8 (+2). Validation gates this iteration: `8 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Metrics: `tests/test_sandbox_security.py` cases 8 -> 11 (+3). Validation gates this iteration: `11 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
