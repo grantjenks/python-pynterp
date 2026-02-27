@@ -270,6 +270,7 @@ class ExpressionMixin:
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
+        self._maybe_raise_recursion_limit_for_interpreted_call()
         if kwargs:
             result = func(*args, **kwargs)
         else:
@@ -633,6 +634,7 @@ class ExpressionMixin:
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
+        self._maybe_raise_recursion_limit_for_interpreted_call()
         if kwargs:
             result = func(*args, **kwargs)
         else:

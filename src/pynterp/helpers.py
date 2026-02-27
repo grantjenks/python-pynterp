@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import sys
 from typing import Any, Callable, Dict, Iterator
 
 from .common import NO_DEFAULT, UNBOUND, AwaitRequest, ReturnSignal
@@ -16,6 +17,15 @@ _PY_LEN = len
 _PY_NEXT = next
 _PY_TUPLE = tuple
 _PY_ZIP = zip
+_PY_SYS_GETFRAME = getattr(sys, "_getframe", None)
+_PY_SYS_GETRECURSIONLIMIT = sys.getrecursionlimit
+_PY_SYS_SETRECURSIONLIMIT = sys.setrecursionlimit
+
+# Interpreted function calls consume several host Python frames per logical
+# user-call depth. Reserve adaptive headroom so interpreted recursion behavior
+# is closer to native function recursion limits.
+_INTERPRETED_RECURSION_BASE_HEADROOM = 96
+_INTERPRETED_RECURSION_PER_CALL_HEADROOM = 6
 
 
 class InterpretedAsyncGenerator:
@@ -144,6 +154,89 @@ class HelperMixin:
         if not owner:
             return name
         return f"_{owner}{name}"
+
+    def _push_root_recursion_limit_state(self) -> bool:
+        if _PY_SYS_GETFRAME is None:
+            return False
+        state_stack = getattr(self, "_auto_recursion_limit_stack", None)
+        if state_stack is None:
+            state_stack = []
+            self._auto_recursion_limit_stack = state_stack
+        if state_stack:
+            return False
+        try:
+            limit = _PY_SYS_GETRECURSIONLIMIT()
+        except Exception:
+            return False
+        state_stack.append({"original": limit, "max_auto": limit})
+        return True
+
+    def _pop_root_recursion_limit_state(self, pushed: bool) -> None:
+        if not pushed:
+            return
+        state_stack = getattr(self, "_auto_recursion_limit_stack", None)
+        if not state_stack:
+            return
+
+        state = state_stack.pop()
+        try:
+            current_limit = _PY_SYS_GETRECURSIONLIMIT()
+        except Exception:
+            return
+
+        # If user code changed the recursion limit explicitly, keep it.
+        if current_limit != state["max_auto"]:
+            return
+
+        original_limit = state["original"]
+        if original_limit >= current_limit:
+            return
+        try:
+            _PY_SYS_SETRECURSIONLIMIT(original_limit)
+        except (RecursionError, ValueError):
+            return
+
+    def _maybe_raise_recursion_limit_for_interpreted_call(self) -> None:
+        if _PY_SYS_GETFRAME is None:
+            return
+        call_stack = getattr(self, "_call_stack", None)
+        if not call_stack:
+            return
+
+        interpreted_depth = _PY_LEN(call_stack)
+        required_margin = (
+            _INTERPRETED_RECURSION_BASE_HEADROOM
+            + interpreted_depth * _INTERPRETED_RECURSION_PER_CALL_HEADROOM
+        )
+        try:
+            frame = _PY_SYS_GETFRAME()
+            current_limit = _PY_SYS_GETRECURSIONLIMIT()
+        except Exception:
+            return
+
+        depth = 0
+        while frame is not None:
+            depth += 1
+            frame = frame.f_back
+
+        if current_limit - depth >= required_margin:
+            return
+
+        target_limit = depth + required_margin
+        if target_limit <= current_limit:
+            return
+
+        try:
+            _PY_SYS_SETRECURSIONLIMIT(target_limit)
+        except (RecursionError, ValueError):
+            return
+
+        state_stack = getattr(self, "_auto_recursion_limit_stack", None)
+        if not state_stack:
+            return
+        state = state_stack[-1]
+        if target_limit > state["max_auto"]:
+            state["max_auto"] = target_limit
 
     def _unpack_sequence_target(self, target: ast.Tuple | ast.List, value: Any) -> list[tuple[ast.AST, Any]]:
         items = list(value)
@@ -543,23 +636,35 @@ class HelperMixin:
             self._call_stack = []
         frame = (func_obj, call_scope)
 
+        def enter_call_frame() -> bool:
+            pushed_root_state = False
+            if not self._call_stack:
+                pushed_root_state = self._push_root_recursion_limit_state()
+            self._call_stack.append(frame)
+            self._maybe_raise_recursion_limit_for_interpreted_call()
+            return pushed_root_state
+
+        def exit_call_frame(pushed_root_state: bool) -> None:
+            self._call_stack.pop()
+            self._pop_root_recursion_limit_state(pushed_root_state)
+
         if func_obj.is_async:
             if func_obj.is_async_generator:
 
                 def async_gen_runner():
-                    self._call_stack.append(frame)
+                    pushed_root_state = enter_call_frame()
                     try:
                         try:
                             yield from self.g_exec_block(node.body, call_scope)
                         except ReturnSignal:
                             return
                     finally:
-                        self._call_stack.pop()
+                        exit_call_frame(pushed_root_state)
 
                 return InterpretedAsyncGenerator(async_gen_runner())
 
             async def async_runner():
-                self._call_stack.append(frame)
+                pushed_root_state = enter_call_frame()
                 try:
                     body_runner = self.g_exec_block(node.body, call_scope)
                     try:
@@ -589,13 +694,13 @@ class HelperMixin:
                             except ReturnSignal as r:
                                 return r.value
                 finally:
-                    self._call_stack.pop()
+                    exit_call_frame(pushed_root_state)
 
             return async_runner()
 
         # normal function executes immediately
         if not func_obj.is_generator:
-            self._call_stack.append(frame)
+            pushed_root_state = enter_call_frame()
             try:
                 try:
                     if _PY_ISINSTANCE(node, ast.Lambda):
@@ -605,17 +710,17 @@ class HelperMixin:
                     return r.value
                 return None
             finally:
-                self._call_stack.pop()
+                exit_call_frame(pushed_root_state)
 
         # generator function returns a real Python generator to allow pausing/resuming
         def runner():
-            self._call_stack.append(frame)
+            pushed_root_state = enter_call_frame()
             try:
                 try:
                     yield from self.g_exec_block(node.body, call_scope)
                 except ReturnSignal as r:
                     return r.value
             finally:
-                self._call_stack.pop()
+                exit_call_frame(pushed_root_state)
 
         return runner()

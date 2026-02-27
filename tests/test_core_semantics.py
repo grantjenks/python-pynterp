@@ -179,6 +179,20 @@ RESULT = run()
     assert env["RESULT"] == 12
 
 
+def test_recursive_user_function_can_build_deep_fstring_shape(run_interpreter) -> None:
+    source = """
+def create_nested_fstring(n):
+    if n == 0:
+        return "1+1"
+    prev = create_nested_fstring(n - 1)
+    return f'f"{{{prev}}}"'
+
+RESULT = create_nested_fstring(160)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"].startswith('f"{')
+
+
 def test_module_code_handles_symtable_keyword_incompatibility(monkeypatch: pytest.MonkeyPatch) -> None:
     from pynterp import code as code_mod
 
