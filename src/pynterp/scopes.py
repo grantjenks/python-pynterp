@@ -236,6 +236,7 @@ class ClassBodyScope(RuntimeScope):
         outer_scope: RuntimeScope,
         class_ns: Dict[str, Any],
         class_cell: Cell | None = None,
+        type_param_cells: Dict[str, Cell] | None = None,
         private_owner: str | None = None,
     ):
         super().__init__(
@@ -247,14 +248,26 @@ class ClassBodyScope(RuntimeScope):
         self.outer_scope = outer_scope
         self.class_ns = class_ns
         self.class_cell = class_cell
+        self.type_param_cells = dict(type_param_cells or {})
+        self._shadowed_type_param_names: Set[str] = set()
 
     def load(self, name: str) -> Any:
         if name in self.class_ns:
             return self.class_ns[name]
+        if name not in self._shadowed_type_param_names:
+            type_param_cell = self.type_param_cells.get(name)
+            if type_param_cell is not None:
+                if type_param_cell.value is UNBOUND:
+                    raise NameError(name)
+                return type_param_cell.value
         return self.outer_scope.load(name)
 
     def store(self, name: str, value: Any) -> Any:
         self.class_ns[name] = value
+        if name in self.type_param_cells:
+            # Class-local rebinding shadows generic type params for direct loads
+            # in the class body, but closures still capture the type-param cell.
+            self._shadowed_type_param_names.add(name)
         return value
 
     def unbind(self, name: str) -> None:
@@ -269,6 +282,9 @@ class ClassBodyScope(RuntimeScope):
     def capture_cell(self, name: str) -> Cell:
         if name == "__class__" and self.class_cell is not None:
             return self.class_cell
+        type_param_cell = self.type_param_cells.get(name)
+        if type_param_cell is not None:
+            return type_param_cell
         return self.outer_scope.capture_cell(name)
 
 

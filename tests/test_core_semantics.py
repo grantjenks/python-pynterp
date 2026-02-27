@@ -463,6 +463,58 @@ RESULT = Alias.__value__() is T_param
     assert env["RESULT"] is True
 
 
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_class_type_param_is_visible_in_body_and_method_closure(run_interpreter):
+    source = """
+class C[T]:
+    marker = T
+    def method(self):
+        return T
+
+T_param, = C.__type_params__
+RESULT = (C.marker is T_param, C().method() is T_param)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True)
+
+
+@pytest.mark.skipif(
+    not (HAS_TYPE_ALIAS and HAS_TYPE_PARAMS),
+    reason="TypeAlias and type params require Python 3.12+",
+)
+def test_typealias_lambda_in_generic_class_captures_class_type_param(run_interpreter):
+    source = """
+class C[T]:
+    T = "class"
+    type Alias = lambda: T
+
+RESULT = C.Alias.__value__() is C.__type_params__[0]
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] is True
+
+
+@pytest.mark.skipif(
+    not (HAS_TYPE_ALIAS and HAS_TYPE_PARAMS),
+    reason="TypeAlias and type params require Python 3.12+",
+)
+def test_generic_typealias_lambda_in_generic_class_captures_outer_type_param(run_interpreter):
+    source = """
+class C[T, U]:
+    T = "class"
+    U = "class"
+    type Alias[T] = lambda: (T, U)
+
+inner_t, outer_u = C.Alias.__value__()
+RESULT = (
+    inner_t is C.Alias.__type_params__[0],
+    outer_u is C.__type_params__[1],
+)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True)
+
+
 def test_async_function_def_returns_coroutine(run_interpreter):
     source = """
 async def add(x, y=3):

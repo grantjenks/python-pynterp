@@ -761,6 +761,10 @@ class StatementMixin:
             type_param_node.name: type_param
             for type_param_node, type_param in zip(type_param_nodes, type_params)
         }
+        type_param_cells = {
+            type_param_name: Cell(type_param)
+            for type_param_name, type_param in type_param_bindings.items()
+        }
         eval_scope: RuntimeScope = (
             _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
         )
@@ -796,6 +800,7 @@ class StatementMixin:
             outer_scope=scope,
             class_ns=class_ns,
             class_cell=class_cell,
+            type_param_cells=type_param_cells,
             private_owner=node.name,
         )
         self.exec_block(node.body, body_scope)
@@ -1247,6 +1252,10 @@ class StatementMixin:
             type_param_node.name: type_param
             for type_param_node, type_param in zip(type_param_nodes, type_params)
         }
+        type_param_cells = {
+            type_param_name: Cell(type_param)
+            for type_param_name, type_param in type_param_bindings.items()
+        }
         eval_scope: RuntimeScope = (
             _TypeAliasEvalScope(scope, type_param_bindings) if type_param_bindings else scope
         )
@@ -1282,6 +1291,7 @@ class StatementMixin:
             outer_scope=scope,
             class_ns=class_ns,
             class_cell=class_cell,
+            type_param_cells=type_param_cells,
             private_owner=node.name,
         )
         # class body itself cannot yield (syntax), so normal exec is OK:
