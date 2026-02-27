@@ -79,3 +79,30 @@ RESULT = getter(f, "__globals__")
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_probe>")
+
+
+def test_user_function_interpreter_policy_mutation_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+probe.interpreter.allowed_imports = None
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<interpreter_policy_probe>")
+
+
+def test_object_getattribute_cannot_reach_user_function_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = object.__getattribute__
+RESULT = getter(probe, "interpreter")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_interpreter_probe>")

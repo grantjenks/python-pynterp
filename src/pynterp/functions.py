@@ -4,6 +4,7 @@ import ast
 import copy
 import importlib
 import inspect
+import weakref
 from typing import TYPE_CHECKING, Any, Dict
 
 from .code import ModuleCode, ScopeInfo
@@ -11,6 +12,9 @@ from .common import NO_DEFAULT, Cell
 
 if TYPE_CHECKING:
     from .main import Interpreter
+
+
+_USER_FUNCTION_INTERPRETERS = weakref.WeakKeyDictionary()
 
 
 def _resolve_qualname_attr(obj: Any, qualname: str) -> Any:
@@ -222,7 +226,6 @@ class UserFunction:
     __slots__ = (
         "__dict__",
         "__weakref__",
-        "interpreter",
         "node",
         "code",
         "globals",
@@ -264,7 +267,6 @@ class UserFunction:
         annotations: Dict[str, Any] | None = None,
         private_owner: str | None = None,
     ):
-        self.interpreter = interpreter
         self.node = node
         self.code = code
         self.globals = globals_dict
@@ -302,6 +304,7 @@ class UserFunction:
             self.__annotations__,
         )
         self._private_owner = private_owner
+        _USER_FUNCTION_INTERPRETERS[self] = interpreter
 
     def __repr__(self) -> str:
         if self.is_async_generator:
@@ -315,7 +318,11 @@ class UserFunction:
         return f"<UserFunction {self.__name__} ({kind})>"
 
     def __call__(user_function, *args, **kwargs):
-        return user_function.interpreter._call_user_function(user_function, args, kwargs)
+        try:
+            interpreter = _USER_FUNCTION_INTERPRETERS[user_function]
+        except KeyError as exc:  # pragma: no cover - defensive fallback
+            raise RuntimeError("interpreted function is detached from interpreter") from exc
+        return interpreter._call_user_function(user_function, args, kwargs)
 
     def __get__(self, obj, objtype=None):
         if obj is None:
