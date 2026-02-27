@@ -287,6 +287,8 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         if func is builtins.globals and not args and not kwargs:
             return scope.globals
+        if func is builtins.locals and not args and not kwargs:
+            return self._default_exec_eval_locals(scope)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
             result = self._adapt_runtime_value(special_value)
@@ -654,6 +656,8 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         if func is builtins.globals and not args and not kwargs:
             return scope.globals
+        if func is builtins.locals and not args and not kwargs:
+            return self._default_exec_eval_locals(scope)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
             return special_value

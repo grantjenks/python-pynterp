@@ -265,6 +265,29 @@ RESULT = use_globals()
     assert env["RESULT"] == 7
 
 
+def test_locals_builtin_returns_interpreted_function_locals() -> None:
+    source = """
+def run():
+    local_timer = []
+    ns = locals()
+    exec("def inner():\\n"
+         "    local_timer.append(1)\\n", ns, ns)
+    ns["inner"]()
+    return len(local_timer)
+
+RESULT = run()
+"""
+    env = {
+        "__name__": "__main__",
+        "__package__": None,
+        "__file__": "<test_locals_builtin>",
+        "__builtins__": builtins,
+    }
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    interpreter.run(source, env=env, filename="<test_locals_builtin>")
+    assert env["RESULT"] == 1
+
+
 def test_exec_builtin_uses_interpreted_function_scope_locals() -> None:
     source = """
 def run():
