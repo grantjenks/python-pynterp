@@ -549,6 +549,20 @@ RESULT = (
 
 
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
+def test_generic_method_body_private_type_params_resolve_in_runtime_scope(run_interpreter):
+    source = """
+class Foo[__T]:
+    def meth[__U](self):
+        return (__T, __U)
+
+t, u = Foo().meth()
+RESULT = (t is Foo.__type_params__[0], u is Foo.meth.__type_params__[0])
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (True, True)
+
+
+@pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
 def test_nested_class_body_skips_outer_class_locals_for_name_loads(run_interpreter):
     source = """
 def f():

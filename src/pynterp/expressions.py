@@ -111,7 +111,7 @@ class ExpressionMixin:
 
     def eval_Name(self, node: ast.Name, scope: RuntimeScope) -> Any:
         if isinstance(node.ctx, ast.Load):
-            return scope.load(node.id)
+            return scope.load(self._mangle_private_name(node.id, scope))
         raise NotImplementedError("Name ctx other than Load not supported here")
 
     def eval_BinOp(self, node: ast.BinOp, scope: RuntimeScope) -> Any:
@@ -475,7 +475,7 @@ class ExpressionMixin:
         yield
 
     def g_eval_Name(self, node: ast.Name, scope: RuntimeScope) -> Iterator[Any]:
-        return scope.load(node.id)
+        return scope.load(self._mangle_private_name(node.id, scope))
         yield
 
     def g_eval_BinOp(self, node: ast.BinOp, scope: RuntimeScope) -> Iterator[Any]:
