@@ -218,7 +218,7 @@ $EXTRA_PROMPT"
   log_file="$LOG_DIR_ABS/iter-$(printf '%03d' "$i").log"
   last_msg="$LOG_DIR_ABS/iter-$(printf '%03d' "$i").last-message.txt"
 
-  cmd=("$CODEX_BIN" exec "--cd" "$WORKDIR" "--full-auto" "--color" "never" "--output-last-message" "$last_msg")
+  cmd=("$CODEX_BIN" exec "--cd" "$WORKDIR" "--yolo" "--color" "never" "--output-last-message" "$last_msg")
   if [[ -n "$MODEL" ]]; then
     cmd+=("--model" "$MODEL")
   fi
