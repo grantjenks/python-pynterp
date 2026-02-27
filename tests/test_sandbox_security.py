@@ -81,6 +81,38 @@ RESULT = getter(f, "__globals__")
         interp.run(source, env=env, filename="<object_getattribute_probe>")
 
 
+def test_type_getattribute_cannot_bypass_attr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = type.__getattribute__
+RESULT = getter(f, "__globals__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_probe>")
+
+
+def test_super_getattribute_cannot_bypass_attr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Base:
+    pass
+
+class Child(Base):
+    pass
+
+child = Child()
+getter = super(Child, child).__getattribute__
+RESULT = getter("__dict__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_probe>")
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -106,6 +138,24 @@ RESULT = getter(probe, "interpreter")
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_interpreter_probe>")
+
+
+def test_metaclass_getattribute_cannot_reach_subclasses_pivot():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+getter = Meta.__getattribute__
+RESULT = getter(Probe, "__subclasses__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<metaclass_getattribute_probe>")
 
 
 def test_function_closure_cell_escape_chain_is_blocked():
