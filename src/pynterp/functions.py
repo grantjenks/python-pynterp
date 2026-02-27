@@ -37,6 +37,7 @@ class UserFunction:
         node: ast.FunctionDef,
         code: ModuleCode,
         globals_dict: dict,
+        builtins_dict: dict,
         scope_info: ScopeInfo,
         closure: Dict[str, Cell],
         defaults: list[Any],
@@ -47,6 +48,7 @@ class UserFunction:
         self.node = node
         self.code = code
         self.globals = globals_dict
+        self.builtins = builtins_dict
         self.scope_info = scope_info
         self.closure = dict(closure)
         self.defaults = list(defaults)

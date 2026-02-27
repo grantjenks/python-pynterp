@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
-import builtins
+from types import ModuleType
 from typing import Any, Dict, Iterator, Optional, Set
+
+from pynterp.lib import import_safe_stdlib_module, make_safe_env
 
 from .code import ModuleCode
 from .scopes import ModuleScope, RuntimeScope
@@ -20,9 +22,6 @@ class InterpreterCore:
         """
         self.allowed_imports = None if allowed_imports is None else set(allowed_imports)
         self.allow_relative_imports = bool(allow_relative_imports)
-
-        self.builtins = dict(builtins.__dict__)
-        self.builtins["__import__"] = self._restricted_import
 
     # ----- restricted import -----
 
@@ -45,32 +44,47 @@ class InterpreterCore:
             raise ImportError("relative imports are not supported by this interpreter")
         if not self._is_allowed_module(name):
             raise ImportError(f"import of '{name}' is not allowed")
-        return builtins.__import__(name, globals, locals, fromlist, level)
+        return import_safe_stdlib_module(name)
 
     def _import(self, name: str, scope: RuntimeScope, fromlist=(), level=0):
-        imp = self.builtins["__import__"]
+        imp = scope.builtins.get("__import__")
+        if imp is None or not callable(imp):
+            raise ImportError("__import__ is not available in this environment")
         return imp(name, scope.globals, scope.globals, fromlist, level)
+
+    def make_default_env(self, env: Optional[dict] = None, *, name: str = "__main__") -> dict:
+        if env is None:
+            base: Dict[str, Any] = {}
+        elif isinstance(env, dict):
+            base = dict(env)
+        else:
+            raise TypeError("env must be dict or None")
+        return make_safe_env(self._restricted_import, env=base, name=name)
 
     # ----- run -----
 
-    def run(self, source: str, env: Optional[dict] = None, filename: str = "<pynterp>") -> dict:
+    def run(self, source: str, env: dict, filename: str = "<pynterp>") -> dict:
         """
         Execute `source` in a fresh AST interpreter module environment.
 
         Returns the module globals dict.
         """
-        if env is None:
-            globals_dict: Dict[str, Any] = {}
-        elif isinstance(env, dict):
-            globals_dict = env
-        else:
-            raise TypeError("env must be dict or None")
+        if not isinstance(env, dict):
+            raise TypeError("env must be dict")
+        globals_dict = env
 
-        globals_dict.setdefault("__builtins__", self.builtins)
-        globals_dict.setdefault("__name__", "__main__")
+        raw_builtins = globals_dict.get("__builtins__", {})
+        if raw_builtins is None:
+            builtins_dict: Dict[str, Any] = {}
+        elif isinstance(raw_builtins, dict):
+            builtins_dict = raw_builtins
+        elif isinstance(raw_builtins, ModuleType):
+            builtins_dict = raw_builtins.__dict__
+        else:
+            raise TypeError("__builtins__ must be dict, module, or None")
 
         code = ModuleCode(source, filename)
-        scope = ModuleScope(code, globals_dict, self.builtins)
+        scope = ModuleScope(code, globals_dict, builtins_dict)
 
         self.exec_module(code.tree, scope)
         return globals_dict

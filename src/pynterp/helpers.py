@@ -171,7 +171,7 @@ class HelperMixin:
         node = func_obj.node
         si = func_obj.scope_info
         call_scope = FunctionScope(
-            func_obj.code, func_obj.globals, self.builtins, si, func_obj.closure
+            func_obj.code, func_obj.globals, func_obj.builtins, si, func_obj.closure
         )
 
         def is_bound(name: str) -> bool:

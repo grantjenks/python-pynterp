@@ -18,7 +18,7 @@ from pynterp import Interpreter
 def run_interpreter():
     def _run(source: str, *, allowed_imports=None, env=None, filename: str = "<test>"):
         interpreter = Interpreter(allowed_imports=allowed_imports)
-        globals_dict = {} if env is None else dict(env)
+        globals_dict = interpreter.make_default_env(env=env)
         interpreter.run(source, env=globals_dict, filename=filename)
         return globals_dict
 
