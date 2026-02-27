@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import functools
 import inspect
+import importlib
+import sys
 import types
 from types import ModuleType
 from typing import Any
@@ -190,6 +192,126 @@ def _patch_unittest_loader_load_tests_from_name(module: ModuleType) -> None:
     setattr(test_loader, "loadTestsFromName", load_tests_from_name_wrapper)
 
 
+def _sync_subinterpreter_sys_path(interp: Any) -> None:
+    # Subinterpreters do not always inherit runtime sys.path updates (like
+    # probe-added CPython Lib roots), which breaks unpickling globals.
+    parent_sys_path = tuple(path for path in sys.path if _PY_ISINSTANCE(path, str))
+    interp.prepare_main(__pynterp_parent_sys_path__=parent_sys_path)
+    interp.exec(
+        "import sys as _pynterp_sys\n"
+        "_pynterp_sys.path[:] = list(__pynterp_parent_sys_path__)\n"
+        "del __pynterp_parent_sys_path__\n"
+        "del _pynterp_sys\n"
+    )
+
+
+def _serialize_user_function_target(func: Any) -> tuple[str, str] | None:
+    from pynterp.functions import UserFunction
+
+    if not _PY_ISINSTANCE(func, UserFunction):
+        return None
+
+    module_name = _PY_GETATTR(func, "__module__", None)
+    qualname = _PY_GETATTR(func, "__qualname__", None)
+    if not _PY_ISINSTANCE(module_name, str) or not _PY_ISINSTANCE(qualname, str):
+        return None
+    if "<locals>" in qualname:
+        return None
+    return module_name, qualname
+
+
+def _call_user_function_by_global_name(
+    module_name: str,
+    qualname: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Any:
+    from pynterp.functions import _load_user_function_global
+
+    func = _load_user_function_global(module_name, qualname)
+    return func(*args, **kwargs)
+
+
+def _patch_concurrent_futures_interpreter_worker_context(module: ModuleType) -> None:
+    worker_context = _PY_GETATTR(module, "WorkerContext", None)
+    if not _PY_ISINSTANCE(worker_context, type):
+        return
+
+    prepare = _PY_GETATTR(worker_context, "prepare", None)
+    if not _PY_CALLABLE(prepare):
+        return
+    if not _PY_GETATTR(prepare, "__pynterp_userfunction_task_adapter__", False):
+        def prepare_wrapper(cls: Any, initializer: Any, initargs: Any):
+            def resolve_task(fn: Any, args: Any, kwargs: Any):
+                serialized = _serialize_user_function_target(fn)
+                if serialized is not None:
+                    module_name, qualname = serialized
+                    fn = _call_user_function_by_global_name
+                    args = (module_name, qualname, tuple(args), dict(kwargs))
+                    kwargs = {}
+                if _PY_ISINSTANCE(fn, str):
+                    # Match CPython's current interpreter-pool policy.
+                    raise TypeError("scripts not supported")
+                return (fn, args, kwargs)
+
+            if initializer is not None:
+                try:
+                    initdata = resolve_task(initializer, initargs, {})
+                except ValueError:
+                    if _PY_ISINSTANCE(initializer, str) and initargs:
+                        raise ValueError(
+                            f"an initializer script does not take args, got {initargs!r}"
+                        )
+                    raise
+            else:
+                initdata = None
+
+            def create_context():
+                return cls(initdata)
+
+            return create_context, resolve_task
+
+        prepare_wrapper.__name__ = _PY_GETATTR(prepare, "__name__", "prepare")
+        prepare_wrapper.__qualname__ = _PY_GETATTR(prepare, "__qualname__", "prepare")
+        prepare_wrapper.__doc__ = _PY_GETATTR(prepare, "__doc__", None)
+        setattr(prepare_wrapper, "__pynterp_userfunction_task_adapter__", True)
+        setattr(worker_context, "prepare", classmethod(prepare_wrapper))
+
+    original_run = _PY_GETATTR(worker_context, "run", None)
+    if not _PY_CALLABLE(original_run):
+        return
+    if _PY_GETATTR(original_run, "__pynterp_subinterp_syspath_adapter__", False):
+        return
+
+    def run_wrapper(self: Any, task: Any):
+        interp = _PY_GETATTR(self, "interp", None)
+        if interp is not None and not _PY_GETATTR(self, "__pynterp_sys_path_synced__", False):
+            _sync_subinterpreter_sys_path(interp)
+            setattr(self, "__pynterp_sys_path_synced__", True)
+        return original_run(self, task)
+
+    run_wrapper.__name__ = _PY_GETATTR(original_run, "__name__", "run")
+    run_wrapper.__qualname__ = _PY_GETATTR(original_run, "__qualname__", "run")
+    run_wrapper.__doc__ = _PY_GETATTR(original_run, "__doc__", None)
+    setattr(run_wrapper, "__pynterp_subinterp_syspath_adapter__", True)
+    setattr(worker_context, "run", run_wrapper)
+
+
+def _patch_concurrent_futures_module(module: ModuleType) -> None:
+    try:
+        interpreter_mod = importlib.import_module("concurrent.futures.interpreter")
+    except Exception:
+        return
+    if type(interpreter_mod) is ModuleType:
+        _patch_concurrent_futures_interpreter_worker_context(interpreter_mod)
+
+
+def _patch_concurrent_module(module: ModuleType) -> None:
+    futures_mod = _PY_GETATTR(module, "futures", None)
+    if type(futures_mod) is ModuleType:
+        _patch_concurrent_futures_module(futures_mod)
+
+
 def maybe_patch_runtime_module(value: Any) -> Any:
     # Avoid isinstance() for arbitrary call results: it can trigger user
     # __class__ descriptors and mask the original call behavior.
@@ -209,4 +331,12 @@ def maybe_patch_runtime_module(value: Any) -> Any:
         loader_module = _PY_GETATTR(value, "loader", None)
         if type(loader_module) is ModuleType:
             _patch_unittest_loader_load_tests_from_name(loader_module)
+    if value.__name__ == "concurrent":
+        _patch_concurrent_module(value)
+    if value.__name__ == "concurrent.futures.interpreter":
+        _patch_concurrent_futures_interpreter_worker_context(value)
+    if value.__name__ == "concurrent.futures":
+        _patch_concurrent_futures_module(value)
+    if value.__name__.startswith("concurrent.futures."):
+        _patch_concurrent_futures_module(importlib.import_module("concurrent.futures"))
     return value

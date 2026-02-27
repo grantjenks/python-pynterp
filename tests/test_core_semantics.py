@@ -2428,6 +2428,55 @@ finally:
     assert "surrogates not allowed" in env["RESULT"][1]
 
 
+def test_interpreter_pool_initializer_accepts_interpreted_functions(tmp_path: Path, monkeypatch):
+    pytest.importorskip("_interpreters")
+    module_name = "pynterp_interpreter_pool_fixture"
+    module_path = tmp_path / f"{module_name}.py"
+    module_source = """
+STATE = "uninitialized"
+
+def init(value):
+    global STATE
+    STATE = value
+    STATE
+
+def get_state():
+    return STATE
+
+"""
+    source = """
+from concurrent.futures import InterpreterPoolExecutor
+
+STATE = "uninitialized"
+
+def init(value):
+    global STATE
+    STATE = value
+    STATE
+
+def get_state():
+    return STATE
+
+with InterpreterPoolExecutor(max_workers=1, initializer=init, initargs=("initialized",)) as ex:
+    RESULT = ex.submit(get_state).result(timeout=5)
+"""
+    module_path.write_text(module_source)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
+    env = {
+        "__name__": module_name,
+        "__package__": None,
+        "__file__": str(module_path),
+        "__builtins__": dict(builtins.__dict__),
+    }
+    interpreter.run(
+        source,
+        env=env,
+        filename=str(module_path),
+    )
+    assert env["RESULT"] == "initialized"
+
+
 @pytest.mark.skipif(not HAS_TEMPLATE_STR, reason="TemplateStr requires Python 3.14+")
 def test_templatestr_builds_template_with_interpolation_metadata(run_interpreter):
     source = """
