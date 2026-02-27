@@ -519,6 +519,31 @@ RESULT = f.__annotations__
     assert env["RESULT"] == {}
 
 
+def test_function_local_annassign_does_not_evaluate_annotation_expression(run_interpreter):
+    source = """
+def f():
+    x: MissingType
+    x: AnotherMissingType = 1
+    return x
+
+RESULT = f()
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == 1
+
+
+def test_generator_local_annassign_does_not_evaluate_annotation_expression(run_interpreter):
+    source = """
+def gen():
+    value: MissingType = 7
+    yield value
+
+RESULT = list(gen())
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == [7]
+
+
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
 def test_generic_function_records_type_params_without_scope_leak(run_interpreter):
     source = """

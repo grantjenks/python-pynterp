@@ -18,7 +18,7 @@ from .common import (
     ReturnSignal,
 )
 from .functions import UserFunction
-from .scopes import ClassBodyScope, RuntimeScope
+from .scopes import ClassBodyScope, FunctionScope, RuntimeScope
 from .symtable_utils import _contains_yield
 
 _MISSING = object()
@@ -485,10 +485,14 @@ class StatementMixin:
             self._assign_target(tgt, val, scope)
 
     def exec_AnnAssign(self, node: ast.AnnAssign, scope: RuntimeScope) -> None:
-        # Minimal: evaluate annotation + (optional) value.
         if node.value is not None:
             val = self.eval_expr(node.value, scope)
             self._assign_target(node.target, val, scope)
+
+        # Function-local annotations are compile-time metadata only in CPython;
+        # evaluating them at runtime raises spurious NameError for local hints.
+        if isinstance(scope, FunctionScope):
+            return
 
         if isinstance(node.target, ast.Name):
             ann = self.eval_expr(node.annotation, scope)
@@ -1309,6 +1313,8 @@ class StatementMixin:
         if node.value is not None:
             val = yield from self.g_eval_expr(node.value, scope)
             yield from self.g_assign_target(node.target, val, scope)
+        if isinstance(scope, FunctionScope):
+            return
         if isinstance(node.target, ast.Name):
             ann = yield from self.g_eval_expr(node.annotation, scope)
             ns = scope.class_ns if isinstance(scope, ClassBodyScope) else scope.globals
