@@ -1794,22 +1794,47 @@ RESULT = box.capture(self="keyword")
     assert env["RESULT"] == ("bound", "keyword")
 
 
-def test_attr_guard_allows_traceback_but_keeps_tb_frame_blocked(run_interpreter):
+def test_attr_guard_allows_traceback_frame_but_keeps_frame_pivots_blocked(run_interpreter):
     source = """
 try:
     1 / 0
 except Exception as exc:
     tb = exc.__traceback__
+    frame = tb.tb_frame
     try:
-        _ = tb.tb_frame
-    except Exception as blocked:
-        RESULT = (tb is not None, type(blocked).__name__, str(blocked))
+        _ = frame.f_globals
+    except Exception as blocked_globals_exc:
+        blocked_globals_info = (
+            type(blocked_globals_exc).__name__,
+            str(blocked_globals_exc),
+        )
+    else:
+        blocked_globals_info = None
+
+    try:
+        _ = frame.f_builtins
+    except Exception as blocked_builtins_exc:
+        blocked_builtins_info = (
+            type(blocked_builtins_exc).__name__,
+            str(blocked_builtins_exc),
+        )
+    else:
+        blocked_builtins_info = None
+
+    RESULT = (tb is not None, frame is not None, blocked_globals_info, blocked_builtins_info)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (
         True,
-        "AttributeError",
-        "attribute access to 'tb_frame' is blocked in this environment",
+        True,
+        (
+            "AttributeError",
+            "attribute access to 'f_globals' is blocked in this environment",
+        ),
+        (
+            "AttributeError",
+            "attribute access to 'f_builtins' is blocked in this environment",
+        ),
     )
 
 

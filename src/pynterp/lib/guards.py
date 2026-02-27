@@ -28,7 +28,6 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "f_locals",
         "gi_frame",
         "ag_frame",
-        "tb_frame",
     }
 )
 

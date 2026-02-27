@@ -38,6 +38,20 @@ RESULT = frame.f_globals["__builtins__"]
         interp.run(source, env=env, filename="<frame_probe>")
 
 
+def test_traceback_frame_globals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+RESULT = frame.f_globals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<traceback_frame_probe>")
+
+
 def test_object_getattribute_cannot_bypass_attr_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
