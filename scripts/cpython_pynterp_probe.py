@@ -75,6 +75,12 @@ SLOW_TEST_TIMEOUT_OVERRIDES: dict[str, int] = {
     "Lib/test/test_zipfile64.py": 90,
 }
 
+# Explicit path-based exclusions for modules that consistently deadlock under
+# in-process execution and are outside current process-sandbox compatibility.
+OUT_OF_SCOPE_TEST_PATH_REASONS: dict[str, str] = {
+    "test/test_concurrent_futures/test_deadlock.py": "out_of_scope:path:process_sandbox_deadlock",
+}
+
 
 def load_runtime_policy_blocked_attrs() -> tuple[str, ...]:
     try:
@@ -490,6 +496,12 @@ def classify_applicability(
         rel = path.relative_to(test_root)
         if "test_capi" in rel.parts:
             excluded.append(ExcludedCase(path=path, reason="impl_detail:path:test_capi"))
+            continue
+
+        rel_to_lib = path.relative_to(lib_root).as_posix()
+        out_of_scope_reason = OUT_OF_SCOPE_TEST_PATH_REASONS.get(rel_to_lib)
+        if out_of_scope_reason is not None:
+            excluded.append(ExcludedCase(path=path, reason=out_of_scope_reason))
             continue
 
         source = path.read_text(encoding="utf-8", errors="ignore")

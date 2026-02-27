@@ -309,7 +309,12 @@ Use this section as the source of truth for intentional exclusions.
 - Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "resolve_case_timeout" -q` => `2 passed`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `17 passed`.
 - Targeted CPython 3.14 diagnostic (`run_case`, input `timeout=10` with override active): `Lib/test/test_free_threading/test_monitoring.py` now returns `status="suite"` (no timeout), elapsed `25.0s`, `tests_run=13`.
 - Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `9` (declared tests in `test_free_threading/test_monitoring.py` from `iter059`) if behavior reproduces under full-run worker contention.
-- Diagnostic note: remaining top-timeout files `Lib/test/test_asyncgen.py` (`timeout@60s`), `Lib/test/test_concurrent_futures/test_deadlock.py` (`timeout@40s`), and `Lib/test/test_concurrent_futures/test_interpreter_pool.py` (`timeout@90s`) appear to be non-trivial hangs rather than simple slow suites.
+- Progress (2026-02-27, iter 062): Added explicit path-based applicability exclusion for `Lib/test/test_concurrent_futures/test_deadlock.py` as `out_of_scope:path:process_sandbox_deadlock`, aligned with the documented OS/process sandbox boundary, after calibration confirmed persistent hangs (`run_case` remained `timeout` at both `10s` and `120s`).
+- Local checks: `uv run pytest tests/test_cpython_pynterp_probe.py -k "deadlock_path or classify_applicability_excludes_dunder_code_by_default" -q` => `2 passed, 16 deselected`; `uv run pytest tests/test_cpython_pynterp_probe.py -q` => `18 passed`.
+- Targeted CPython 3.14 diagnostics (`run_case`): `Lib/test/test_asyncgen.py` remained `timeout` at `120s`; `Lib/test/test_concurrent_futures/test_deadlock.py` remained `timeout` at `120s`; `Lib/test/test_concurrent_futures/test_interpreter_pool.py` remained `timeout` at `180s`.
+- Metric delta (classification sweep on `/private/tmp/cpython-3.14`): applicable files `501 -> 500` (`-1`), not-applicable files `261 -> 262` (`+1`), and `out_of_scope:path:process_sandbox_deadlock` now accounts for `1` excluded file.
+- Expected full-probe delta on next rerun: `TIMEOUT` category should decrease by at least `16` (declared tests from `test_deadlock.py` in `iter059`) and timed-out file count should decrease by `1`.
+- Diagnostic note: remaining top-timeout files `Lib/test/test_asyncgen.py` (`timeout@120s`) and `Lib/test/test_concurrent_futures/test_interpreter_pool.py` (`timeout@180s`) still look like non-trivial hangs rather than slow suites.
 
 4. Reduce `Suite/Failure` assertion mismatches.
 - Start with top files from the next full probe report.

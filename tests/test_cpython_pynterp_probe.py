@@ -436,6 +436,41 @@ def test_policy():
     assert "__code__" in excluded[0].reason
 
 
+def test_classify_applicability_excludes_known_process_sandbox_deadlock_path(
+    tmp_path: Path,
+) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    test_root = cpython_root / "Lib" / "test"
+    deadlock_dir = test_root / "test_concurrent_futures"
+    deadlock_dir.mkdir(parents=True)
+    deadlock_path = deadlock_dir / "test_deadlock.py"
+    deadlock_path.write_text(
+        """
+import unittest
+
+class DeadlockCase(unittest.TestCase):
+    def test_smoke(self):
+        self.assertTrue(True)
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    test_files = probe.discover_test_files(cpython_root)
+    applicable, excluded = probe.classify_applicability(
+        test_files,
+        test_root,
+        impl_detail_patterns=probe.compile_source_patterns(probe.CPYTHON_IMPL_PATTERNS),
+        unsupported_patterns=probe.compile_source_patterns(probe.DEFAULT_UNSUPPORTED_PATTERNS),
+    )
+
+    assert applicable == []
+    assert len(excluded) == 1
+    assert excluded[0].path == deadlock_path
+    assert excluded[0].reason == "out_of_scope:path:process_sandbox_deadlock"
+
+
 def test_collect_policy_blocked_attrs_extracts_dunder_names() -> None:
     probe = load_probe_module()
     attrs = probe.collect_policy_blocked_attrs(
