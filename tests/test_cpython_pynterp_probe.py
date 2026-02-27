@@ -321,6 +321,14 @@ def test_collect_policy_blocked_attrs_extracts_dunder_names() -> None:
     assert "f_globals" in attrs
 
 
+def test_collect_policy_blocked_attrs_includes_runtime_guard_attrs() -> None:
+    probe = load_probe_module()
+    from pynterp.lib import guards
+
+    attrs = set(probe.collect_policy_blocked_attrs([]))
+    assert set(guards._BLOCKED_ATTR_NAMES).issubset(attrs)
+
+
 def test_split_policy_blocked_suite_errors_filters_policy_signatures() -> None:
     probe = load_probe_module()
     signature_pairs = [

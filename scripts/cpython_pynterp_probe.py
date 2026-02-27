@@ -59,6 +59,15 @@ POLICY_BLOCKED_ATTR_NAMES = (
     "gi_frame",
 )
 
+
+def load_runtime_policy_blocked_attrs() -> tuple[str, ...]:
+    try:
+        from pynterp.lib.guards import _BLOCKED_ATTR_NAMES as runtime_blocked_attrs
+    except Exception:
+        return ()
+    return tuple(sorted(name for name in runtime_blocked_attrs if isinstance(name, str)))
+
+
 RUNNER = rf"""
 from pathlib import Path
 import builtins
@@ -475,6 +484,7 @@ def extract_blocked_attribute(reason: str) -> str | None:
 
 def collect_policy_blocked_attrs(raw_patterns: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     attrs: set[str] = set(POLICY_BLOCKED_ATTR_NAMES)
+    attrs.update(load_runtime_policy_blocked_attrs())
     for pattern in raw_patterns:
         attrs.update(re.findall(r"__\w+__", pattern))
     return tuple(sorted(attrs))
