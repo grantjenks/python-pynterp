@@ -89,6 +89,53 @@ class ModuleFixtureCase(unittest.TestCase):
     assert payload["errors"] == 0
 
 
+def test_run_case_seeds_module_loader_for_linecache_lazycache(tmp_path: Path) -> None:
+    probe = load_probe_module()
+    cpython_root = tmp_path / "cpython"
+    test_root = cpython_root / "Lib" / "test"
+    test_root.mkdir(parents=True)
+    test_path = test_root / "test_linecache_lazycache.py"
+    test_path.write_text(
+        """
+import linecache
+import unittest
+
+NONEXISTENT = linecache.__file__ + '.missing'
+
+class LinecacheLazycacheCase(unittest.TestCase):
+    def test_lazycache_uses_module_loader(self):
+        linecache.clearcache()
+        try:
+            self.assertTrue(linecache.lazycache(NONEXISTENT, globals()))
+            self.assertEqual(1, len(linecache.cache[NONEXISTENT]))
+        finally:
+            linecache.clearcache()
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    case = probe.TestCase(
+        path=test_path,
+        module_name="test_linecache_lazycache",
+        package_name="",
+        declared_tests=1,
+    )
+    payload = probe.run_case(
+        case,
+        cpython_root=cpython_root,
+        python_exe=Path(sys.executable),
+        pynterp_src=Path(__file__).resolve().parents[1] / "src",
+        mode="module",
+        basis="tests",
+        timeout=10,
+    )
+
+    assert payload["status"] == "suite"
+    assert payload["tests_run"] == 1
+    assert payload["failures"] == 0
+    assert payload["errors"] == 0
+
+
 def test_run_case_isolates_default_tempcwd_name(tmp_path: Path) -> None:
     probe = load_probe_module()
     cpython_root = tmp_path / "cpython"

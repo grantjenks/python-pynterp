@@ -71,6 +71,7 @@ def load_runtime_policy_blocked_attrs() -> tuple[str, ...]:
 RUNNER = rf"""
 from pathlib import Path
 import builtins
+import importlib.util
 import io
 import json
 import os
@@ -183,10 +184,25 @@ else:
     name = "__main__"
     pkg = None
 
+spec = None
+loader = None
+cached = None
+if mode == "module":
+    try:
+        spec = importlib.util.spec_from_file_location(name, str(test_path))
+    except Exception:
+        spec = None
+    if spec is not None:
+        loader = getattr(spec, "loader", None)
+        cached = getattr(spec, "cached", None)
+
 env = {{
     "__name__": name,
     "__package__": pkg,
     "__file__": str(test_path),
+    "__spec__": spec,
+    "__loader__": loader,
+    "__cached__": cached,
     "__builtins__": builtins,
 }}
 
