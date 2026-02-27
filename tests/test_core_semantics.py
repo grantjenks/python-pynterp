@@ -1507,6 +1507,59 @@ RESULT = (
     assert env["RESULT"] == (True, True, True, True, "value")
 
 
+def test_attr_guard_allows_getattribute_call_but_still_blocks_sensitive_names(run_interpreter):
+    source = """
+class Box:
+    def __init__(self):
+        self.value = 42
+
+box = Box()
+bound = box.__getattribute__
+unbound = object.__getattribute__
+SAFE = (bound("value"), unbound(box, "value"))
+
+try:
+    bound("__dict__")
+except Exception as blocked:
+    BLOCKED_BOUND = (type(blocked).__name__, str(blocked))
+
+try:
+    unbound(box, "__dict__")
+except Exception as blocked:
+    BLOCKED_UNBOUND = (type(blocked).__name__, str(blocked))
+
+RESULT = (SAFE, BLOCKED_BOUND, BLOCKED_UNBOUND)
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == (
+        (42, 42),
+        (
+            "AttributeError",
+            "attribute access to '__dict__' is blocked in this environment",
+        ),
+        (
+            "AttributeError",
+            "attribute access to '__dict__' is blocked in this environment",
+        ),
+    )
+
+
+def test_object_getattribute_delegate_in_user_function_does_not_recurse(run_interpreter):
+    source = """
+class Box:
+    def __init__(self):
+        self.value = 42
+
+    def __getattribute__(self, name):
+        return object.__getattribute__(self, name)
+
+box = Box()
+RESULT = box.value
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == 42
+
+
 def test_bound_method_allows_keyword_named_self(run_interpreter):
     source = """
 class Box:

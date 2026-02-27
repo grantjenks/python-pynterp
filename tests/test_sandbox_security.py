@@ -36,3 +36,17 @@ RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<frame_probe>")
+
+
+def test_object_getattribute_cannot_bypass_attr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = object.__getattribute__
+RESULT = getter(f, "__globals__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_probe>")

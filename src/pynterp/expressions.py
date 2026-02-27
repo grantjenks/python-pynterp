@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterator
 from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
-from .lib.guards import guard_attr_name
+from .lib.guards import safe_getattr
 from .scopes import ComprehensionScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
 
@@ -268,8 +268,7 @@ class ExpressionMixin:
         obj = self.eval_expr(node.value, scope)
         if isinstance(node.ctx, ast.Load):
             attr_name = self._mangle_private_name(node.attr, scope)
-            guard_attr_name(attr_name)
-            return getattr(obj, attr_name)
+            return safe_getattr(obj, attr_name)
         raise NotImplementedError("Attribute ctx other than Load not supported here")
 
     def eval_Subscript(self, node: ast.Subscript, scope: RuntimeScope) -> Any:
@@ -627,8 +626,7 @@ class ExpressionMixin:
     def g_eval_Attribute(self, node: ast.Attribute, scope: RuntimeScope) -> Iterator[Any]:
         obj = yield from self.g_eval_expr(node.value, scope)
         attr_name = self._mangle_private_name(node.attr, scope)
-        guard_attr_name(attr_name)
-        return getattr(obj, attr_name)
+        return safe_getattr(obj, attr_name)
 
     def g_eval_Subscript(self, node: ast.Subscript, scope: RuntimeScope) -> Iterator[Any]:
         obj = yield from self.g_eval_expr(node.value, scope)

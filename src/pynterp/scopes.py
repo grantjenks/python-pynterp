@@ -105,7 +105,9 @@ class FunctionScope(RuntimeScope):
         if name in si.locals:
             if name in self.locals:
                 val = self.locals[name]
-                if isinstance(val, Cell):
+                # Avoid isinstance() here: user-defined __getattribute__ on
+                # interpreted objects can recurse when Python probes __class__.
+                if type(val) is Cell:
                     if val.value is UNBOUND:
                         raise UnboundLocalError(
                             f"local variable '{name}' referenced before assignment"
