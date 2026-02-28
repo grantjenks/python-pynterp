@@ -6605,3 +6605,54 @@ RESULT = getter(**{key: "__globals__"})["__builtins__"]
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_function_globals_probe>",
         )
+
+
+def test_descriptor_rebound_bound_getattribute_cannot_reach_function_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+RESULT = getter("__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_function_globals_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_cannot_reach_importer_self():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = __import__.__getattribute__.__get__(None, type(__import__))
+host = getter("__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_importer_self_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_cannot_reach_module_loader():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+RESULT = getter("__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_module_loader_probe>",
+        )
