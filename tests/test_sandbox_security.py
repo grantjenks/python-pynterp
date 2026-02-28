@@ -109,6 +109,73 @@ RESULT = getter(tb.tb_frame, "f_globals")
         )
 
 
+def test_exception_context_traceback_frame_globals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def trigger():
+    try:
+        1 / 0
+    except Exception:
+        raise RuntimeError("boom")
+
+try:
+    trigger()
+except Exception as exc:
+    tb = exc.__context__.__traceback__
+RESULT = tb.tb_frame.f_globals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<exception_context_traceback_probe>")
+
+
+def test_exception_cause_traceback_frame_locals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def trigger():
+    try:
+        1 / 0
+    except Exception as root:
+        raise RuntimeError("boom") from root
+
+try:
+    trigger()
+except Exception as exc:
+    tb = exc.__cause__.__traceback__
+RESULT = tb.tb_frame.f_locals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<exception_cause_traceback_probe>")
+
+
+def test_object_getattribute_cannot_reach_exception_context_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def trigger():
+    try:
+        1 / 0
+    except Exception:
+        raise RuntimeError("boom")
+
+try:
+    trigger()
+except Exception as exc:
+    getter = object.__getattribute__
+    context = getter(exc, "__context__")
+    tb = getter(context, "__traceback__")
+    frame = getter(tb, "tb_frame")
+RESULT = frame.f_globals
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_exception_context_frame_probe>",
+        )
+
+
 def test_coroutine_frame_locals_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
