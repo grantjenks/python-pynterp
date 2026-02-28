@@ -7128,6 +7128,85 @@ RESULT = cells[0].cell_contents
         )
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter("__reduce_ex__")(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_hook_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(name="__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_hook_keyword_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(**{"name": "__reduce_ex__"})(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_hook_keyword_key_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_reduce_hook_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+key = Sneaky("name")
+RESULT = getter(**{key: "__reduce__"})()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_importer_self():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
