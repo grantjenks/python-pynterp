@@ -3047,6 +3047,74 @@ RESULT = getter("__loader__")
         interp.run(source, env=env, filename="<super_getattribute_module_loader_probe>")
 
 
+def test_bound_getattribute_keyword_name_cannot_reach_module_loader_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+getter = math.__getattribute__
+RESULT = getter(name="__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_keyword_module_loader_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_module_spec_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = math.__getattribute__
+name = Sneaky("__spec__")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_bound_getattribute_module_spec_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_bound_getattribute_module_loader_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+getter = math.__getattribute__
+name = Sneaky("__loader__")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_bound_getattribute_module_loader_probe>",
+        )
+
+
 def test_stateful_str_subclass_cannot_bypass_getattr_module_loader_guard():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
