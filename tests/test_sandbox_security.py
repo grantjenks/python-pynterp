@@ -333,6 +333,78 @@ RESULT = getter(target, "__reduce_ex__")(4)
         interp.run(source, env=env, filename="<object_getattribute_reduce_hook_probe>")
 
 
+def test_object_getattribute_cannot_reach_coroutine_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def compute():
+    return 1
+
+co = compute()
+try:
+    getter = object.__getattribute__
+    frame = getter(co, "cr_frame")
+    RESULT = getter(frame, "f_globals")
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_coroutine_frame_globals_probe>",
+        )
+
+
+def test_object_getattribute_cannot_reach_async_generator_frame_locals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def produce():
+    yield 1
+
+ag = produce()
+getter = object.__getattribute__
+frame = getter(ag, "ag_frame")
+RESULT = getter(frame, "f_locals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_async_generator_frame_locals_probe>",
+        )
+
+
+def test_object_getattribute_tb_next_chain_cannot_reach_frame_locals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    getter = object.__getattribute__
+    tb = getter(exc, "__traceback__")
+    while getter(tb, "tb_next") is not None:
+        tb = getter(tb, "tb_next")
+    frame = getter(tb, "tb_frame")
+
+RESULT = getter(frame, "f_locals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_tb_next_chain_frame_locals_probe>",
+        )
+
+
 def test_module_loader_import_smuggling_chain_is_blocked():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
