@@ -8126,6 +8126,149 @@ RESULT = getter(name=name)
         )
 
 
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_traceback_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "f_builtins":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "f_builtins":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+async def compute():
+    return 1
+
+co = compute()
+try:
+    frame = co.cr_frame
+    getter = frame.__getattribute__.__get__(None, type(frame))
+    name = Sneaky("f_builtins")
+    RESULT = getter(name=name)
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "f_builtins":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_generator_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "f_builtins":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+def make_gen():
+    yield 1
+
+gen = make_gen()
+frame = gen.gi_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
+        )
+
+
 def test_str_subclass_str_override_positional_name_cannot_bypass_descriptor_rebound_bound_getattribute_traceback_frame_locals_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
