@@ -651,6 +651,128 @@ RESULT = getter("__code__").co_consts
         interp.run(source, env=env, filename="<super_getattribute_code_probe>")
 
 
+def test_bound_getattribute_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = f.__getattribute__
+RESULT = getter("__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<bound_getattribute_code_probe>")
+
+
+def test_stateful_str_subclass_positional_name_cannot_bypass_bound_getattribute_function_code_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+def f():
+    return 1
+
+getter = f.__getattribute__
+name = Sneaky("__code__")
+RESULT = getter(name).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_bound_getattribute_code_probe>",
+        )
+
+
+def test_str_subclass_str_override_positional_name_cannot_bypass_bound_getattribute_function_code_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+def f():
+    return 1
+
+getter = f.__getattribute__
+name = Sneaky("__code__")
+RESULT = getter(name).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_positional_bound_getattribute_code_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_function_code_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+def f():
+    return 1
+
+getter = f.__getattribute__
+name = Sneaky("__code__")
+RESULT = getter(name=name).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_bound_getattribute_code_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_bound_getattribute_function_code_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+def f():
+    return 1
+
+getter = f.__getattribute__
+key = Sneaky("name")
+RESULT = getter(**{key: "__code__"}).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_bound_getattribute_code_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_object_getattribute_function_code_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
