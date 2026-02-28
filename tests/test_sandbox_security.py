@@ -317,6 +317,49 @@ RESULT = builtins_mod.open
         )
 
 
+def test_import_callable_self_interpreter_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+host = __import__.__self__
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<import_callable_self_probe>")
+
+
+def test_object_getattribute_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = object.__getattribute__
+host = getter(__import__, "__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_type_getattribute_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = type.__getattribute__
+host = getter(__import__, "__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_import_callable_self_probe>",
+        )
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
