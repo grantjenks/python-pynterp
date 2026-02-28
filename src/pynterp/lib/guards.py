@@ -128,9 +128,23 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
 
         def guarded_getattribute(*args: Any, **kwargs: Any) -> Any:
             target = _MISSING
-            attr_name = kwargs.get("name", _MISSING)
             call_args = args
             call_kwargs = kwargs
+            attr_name = _MISSING
+            name_kwarg_key = _MISSING
+
+            for kwarg_key, kwarg_value in kwargs.items():
+                if not isinstance(kwarg_key, str):
+                    continue
+                if _normalize_attr_name(kwarg_key) != "name":
+                    continue
+                if name_kwarg_key is not _MISSING:
+                    raise TypeError(
+                        "__getattribute__() got multiple values for keyword argument 'name'"
+                    )
+                name_kwarg_key = kwarg_key
+                attr_name = kwarg_value
+
             if raw_is_bound:
                 target = getattr(raw_getattribute, "__self__", _MISSING)
                 if attr_name is _MISSING and args:
@@ -143,8 +157,10 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
 
             if attr_name is not _MISSING:
                 attr_name = guard_attr_name(attr_name)
-                if "name" in kwargs:
+                if name_kwarg_key is not _MISSING:
                     call_kwargs = dict(kwargs)
+                    if type(name_kwarg_key) is not str or name_kwarg_key != "name":
+                        del call_kwargs[name_kwarg_key]
                     call_kwargs["name"] = attr_name
                 elif raw_is_bound and args:
                     call_args = (attr_name,) + args[1:]

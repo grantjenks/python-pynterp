@@ -143,6 +143,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 170 -> 173 (+3). Validation gates this iteration: `173 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 52): added positional-name bound-`__getattribute__` regressions for module metadata pivots, covering `math.__getattribute__(name)` with hostile `str` subclasses (`__loader__`, `__dict__`, `__spec__`) to mirror existing keyword-name bypass coverage.
 - Metrics: `tests/test_sandbox_security.py` cases 173 -> 176 (+3). Validation gates this iteration: `176 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 53): added keyword-key (`**{key: ...}`) bound/super `__getattribute__` regressions for module metadata pivots and hardened guarded `__getattribute__` dispatch to canonicalize hostile `str`-subclass `name` keyword keys before blocked-attribute enforcement.
+- Metrics: `tests/test_sandbox_security.py` cases 176 -> 179 (+3). Validation gates this iteration: `179 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
