@@ -6866,6 +6866,31 @@ RESULT = getter(name=name)
         )
 
 
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_traceback_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_builtins"
+
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_traceback_frame_builtins_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -6980,6 +7005,34 @@ finally:
         )
 
 
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_builtins"
+
+async def compute():
+    return 1
+
+co = compute()
+try:
+    frame = co.cr_frame
+    getter = frame.__getattribute__.__get__(None, type(frame))
+    name = Sneaky("f_builtins")
+    RESULT = getter(name=name)
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -7088,6 +7141,31 @@ RESULT = getter(name=name)
         )
 
 
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_builtins"
+
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -7190,6 +7268,31 @@ RESULT = getter(name=name)
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_generator_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_builtins"
+
+def make_gen():
+    yield 1
+
+gen = make_gen()
+frame = gen.gi_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_builtins")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
         )
 
 
