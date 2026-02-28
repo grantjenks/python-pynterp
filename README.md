@@ -1,66 +1,122 @@
 # pynterp
 
-`pynterp` is an AST-walk interpreter for a meaningful subset of Python.
+`pynterp` is an AST-walk interpreter for a substantial, tested subset of Python.
 
-## Why this project exists
+## Project focus
 
-The project is focused on:
+- readable interpreter internals (AST + explicit runtime scopes)
+- deterministic execution through explicit environments
+- measured behavior against CPython tests
 
-- a readable interpreter core (AST + explicit runtime scopes),
-- deterministic, explicit execution environments,
-- self-hosting/bootstrap experiments (interpreter interpreting itself),
-- measurable compatibility against CPython tests.
+## Compatibility
 
-## Key requirements and design decisions
+- host runtime: CPython `3.10+` (`requires-python >=3.10`)
+- language support tracks modern CPython AST features, including:
+  - structural pattern matching (`match` / `case`)
+  - exception groups (`except*`)
+  - generic type parameter syntax and runtime typing objects
+  - template strings (`TemplateStr`) when running on Python `3.14+`
 
-1. Explicit runtime environment only.
-- `Interpreter.run(source, env=...)` requires an explicit dict.
-- No automatic inheritance of host globals or builtins.
+## Quickstart
 
-2. Single runtime policy.
-- There is no separate permissive bootstrap mode.
-- Use `make_default_env(...)` for both regular execution and bootstrap/self-hosting scenarios.
+```pycon
+>>> from pynterp import Interpreter
+>>> interpreter = Interpreter()
+>>> env = interpreter.make_default_env()
+>>> run_result = interpreter.run("""
+... print("Hello, World!")
+... """, env=env)
+Hello, World!
+```
 
-3. In-process hardening for untrusted code (best effort, not OS isolation).
-- Guarded attribute access blocks reflection pivots used for escapes (`__mro__`, `__subclasses__`, frame globals, etc.).
-- Builtins are explicit and wrapped where needed (`getattr`/`setattr`/`delattr`/`hasattr` policy checks).
+## What is implemented
 
-4. Interpreted module loading.
-- `pynterp` modules can be loaded through interpreter execution (`InterpretedModuleLoader`) for bootstrap/self-hosting paths.
+### Core execution model
 
-5. Non-cheating bootstrap test.
-- Bootstrap test imports `pynterp.main.Interpreter` through interpreted import machinery and executes the kitchen-sink fixture.
+- explicit env execution: `Interpreter.run(source, env=...)` requires a dict
+- no implicit inheritance of host globals/builtins
+- `RunResult` return model captures uncaught exceptions without forcing immediate raise
+- interpreter-aware handling for `globals()`, `locals()`, `vars()`, `dir()`, `eval()`, and `exec()`
 
-6. Tooling and layout.
-- `pyproject.toml` + `uv`
-- `ruff` for lint/format checks
-- `pytest`
-- source under `src/pynterp/`, tests under `tests/`
+### Statement support
 
-7. CLI execution.
-- `uv run python -m pynterp tests/fixtures/kitchen_sink.py` runs interpreted scripts.
+- assignment forms: `=`, annotated assignment, augmented assignment, destructuring/starred targets
+- control flow: `if`, `while`, `for`, `break`, `continue`, loop `else`
+- function forms: `def`, `async def`, `return`, `global`, `nonlocal`
+- class definitions with metaclass namespace handling (`__prepare__`) and private-name mangling
+- exception handling: `try/except/else/finally`, `raise`, `raise ... from ...`, `try/except*`
+- context managers: `with`, `async with`
+- pattern matching: value/singleton/sequence/mapping/class/or/as patterns with guards
+- imports: `import`, `from ... import ...`, optional relative import support
+- type alias statement (`type X = ...`) with type parameter support
 
-## Security scope
+### Expression support
 
-In-process hardening is implemented, but this is not an OS-level sandbox boundary.
+- scalar and operator forms: constants, names, unary/binary/bool ops, chained comparisons, conditional expressions, walrus
+- calls with CPython-like argument binding checks (`*args`, `**kwargs`, duplicate-key errors)
+- containers and indexing: list/tuple/set/dict literals, starred unpacking, attributes, subscripts, slices
+- string forms: f-strings and template strings (runtime-dependent for 3.14 features)
+- functional forms: lambdas, comprehensions, generator expressions, `yield`, `yield from`, `await`
 
-- Included: strict env control, import controls, reflection guardrails.
-- Out of scope: CPU/memory/time isolation and kernel/process isolation.
+### Functions, scopes, and runtime semantics
 
-## CPython 3.14 compatibility probe
+- lexical scoping with closure cells and `nonlocal` behavior
+- descriptor-correct method binding (`UserFunction` + `BoundMethod`)
+- zero-argument `super()` support via `__class__` closure behavior
+- function metadata and interoperability: defaults/kwdefaults mutation, annotations, signatures, weakrefs, pickling paths
+- class/generic metadata wiring including `__qualname__`, `__orig_bases__`, and `__type_params__` where applicable
 
-Probe script:
-- [`scripts/cpython_pynterp_probe.py`](/Users/grantjenks/repos/python-pynterp/scripts/cpython_pynterp_probe.py)
+### Async and generator runtime
 
-Default unsupported filters in probe:
+- generator execution path mirrors statement/expression semantics in generator mode
+- async function execution with awaitable protocol handling
+- interpreted async generator object with `asend`, `athrow`, and `aclose` behavior
+
+### Environment controls and hardening
+
+- allowlist-based import control (`allowed_imports`)
+- safe builtins surface (for example no implicit `open`)
+- guarded reflection pivots via wrapped `getattr`/`setattr`/`delattr`/`hasattr`
+- blocked high-risk attributes include names such as `__mro__`, `__subclasses__`, `__globals__`, frame globals/locals, and related pivots
+
+This is in-process hardening, not an OS sandbox.
+Out of scope: CPU/memory/time quotas and process/kernel isolation.
+
+### Interpreted module loading
+
+- optional interpreted package imports via `InterpretedModuleLoader`
+- interpreted modules can import each other through the interpreter runtime
+- the project can interpret code that imports and runs `pynterp` itself (see bootstrap tests)
+
+### Tests in this repo
+
+- `~711` tests across CLI behavior, semantics, security hardening, keyword binding, `super()` semantics, bootstrap/self-interpretation checks, and probe correctness
+- large dedicated security suite exercises reflective escape attempts and descriptor rebound edge cases
+
+## CPython compatibility probe
+
+Probe script: [`scripts/cpython_pynterp_probe.py`](scripts/cpython_pynterp_probe.py)
+
+Reproducible module-mode probe command (from script header):
+
+```bash
+uv run python scripts/cpython_pynterp_probe.py \
+  --cpython-root /tmp/cpython-3.14 \
+  --python-exe /tmp/cpython-3.14/python.exe \
+  --basis tests \
+  --mode module \
+  --strict-worker-match \
+  --json-out /tmp/pynterp-probe-tests-module.json
+```
+
+Default unsupported source filters used by the probe classifier:
+
 - `__import__`
 - `__dict__`
 - `__code__`
 
-Baseline run (CPython `origin/3.14`, built interpreter at `/tmp/cpython-3.14/python.exe`):
+Snapshot baseline (February 27, 2026; CPython `origin/3.14`, `module` mode, `basis=tests`):
 
-- basis: `tests` (individual unittest cases, with blocked-file accounting)
-- mode: `module`
 - total test files: `762`
 - applicable files: `515` (`67.59%`)
 - not applicable files: `247`
@@ -71,44 +127,9 @@ Baseline run (CPython `origin/3.14`, built interpreter at `/tmp/cpython-3.14/pyt
 - individual skip: `1,239`
 - individual fail: `4,694`
 - pass rate (individual): `61.32%`
-- pass+skip rate (individual): `69.40%`
+- individual pass+skip rate: `69.40%`
 
-`script` mode (`__name__ == "__main__"`) is much lower and mainly useful for diagnosing entry-point assumptions:
-- pass rate (individual): `4.11%`
-- pass+skip rate (individual): `7.92%`
+`script` mode (`__name__ == "__main__"`) is much lower and mainly useful for diagnosing entry-point assumptions (same run, `--mode script`):
 
-## Running the probe
-
-Module mode, individual-test basis:
-
-```bash
-uv run python /Users/grantjenks/repos/python-pynterp/scripts/cpython_pynterp_probe.py \
-  --cpython-root /tmp/cpython-3.14 \
-  --python-exe /tmp/cpython-3.14/python.exe \
-  --basis tests \
-  --mode module \
-  --json-out /tmp/pynterp-probe-tests-module.json
-```
-
-Script mode, individual-test basis:
-
-```bash
-uv run python /Users/grantjenks/repos/python-pynterp/scripts/cpython_pynterp_probe.py \
-  --cpython-root /tmp/cpython-3.14 \
-  --python-exe /tmp/cpython-3.14/python.exe \
-  --basis tests \
-  --mode script \
-  --json-out /tmp/pynterp-probe-tests-script.json
-```
-
-To override unsupported filters:
-
-```bash
-uv run python /Users/grantjenks/repos/python-pynterp/scripts/cpython_pynterp_probe.py \
-  --cpython-root /tmp/cpython-3.14 \
-  --python-exe /tmp/cpython-3.14/python.exe \
-  --basis tests \
-  --mode module \
-  --no-default-unsupported \
-  --unsupported-pattern '\\b_tkinter\\b'
-```
+- individual pass rate: `4.11%`
+- individual pass+skip rate: `7.92%`
