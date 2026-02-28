@@ -70,6 +70,7 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Progress (2026-02-28, iteration 29): added import-metadata smuggling regressions for `math.__loader__`/`math.__spec__` using stateful `str` subclasses and `str.__str__`-override names across `getattr`, `type.__getattribute__`, and `super(...).__getattribute__` lookup paths.
 - Progress (2026-02-28, iteration 30): added reflective generator-frame regressions for `type.__getattribute__` and `super(...).__getattribute__` `gi_frame` pivots, plus a stateful `str` subclass keyword-name bypass attempt for `type.__getattribute__(..., name=...)`.
 - Progress (2026-02-28, iteration 31): added keyword-name import-metadata regressions for module `__loader__`/`__spec__` pivots using `object.__getattribute__`, `type.__getattribute__`, and `super(...).__getattribute__` with stateful `str` subclasses and `str.__str__` overrides.
+- Progress (2026-02-28, iteration 32): added keyword-name frame-internal regressions for traceback/coroutine pivots, covering `object.__getattribute__`, `type.__getattribute__`, and `super(...).__getattribute__` with stateful `str` subclasses and `str.__str__` overrides targeting `f_globals`/`f_builtins`/`f_locals`.
 - Metrics: `tests/test_sandbox_security.py` cases 6 -> 8 (+2). Validation gates this iteration: `8 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Metrics: `tests/test_sandbox_security.py` cases 8 -> 11 (+3). Validation gates this iteration: `11 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Metrics: `tests/test_sandbox_security.py` cases 11 -> 14 (+3). Validation gates this iteration: `14 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
@@ -101,6 +102,7 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 98 -> 101 (+3). Validation gates this iteration: `101 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Metrics: `tests/test_sandbox_security.py` cases 101 -> 104 (+3). Validation gates this iteration: `104 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Metrics: `tests/test_sandbox_security.py` cases 104 -> 107 (+3). Validation gates this iteration: `107 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Metrics: `tests/test_sandbox_security.py` cases 107 -> 110 (+3). Validation gates this iteration: `110 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.

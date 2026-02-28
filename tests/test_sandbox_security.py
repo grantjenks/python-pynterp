@@ -1744,6 +1744,98 @@ RESULT = getter(frame, "f_locals")
         )
 
 
+def test_stateful_str_subclass_keyword_name_cannot_bypass_object_getattribute_traceback_frame_globals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+
+name = Sneaky("f_globals")
+RESULT = object.__getattribute__(frame, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_object_getattribute_traceback_frame_globals_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_type_getattribute_traceback_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+
+name = Sneaky("f_builtins")
+RESULT = type.__getattribute__(frame, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_type_getattribute_traceback_frame_builtins_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_super_getattribute_coroutine_frame_locals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def compute():
+    return 1
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+co = compute()
+try:
+    frame = co.cr_frame
+    getter = super(type(frame), frame).__getattribute__
+    name = Sneaky("f_locals")
+    RESULT = getter(name=name)
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_super_getattribute_coroutine_frame_locals_probe>",
+        )
+
+
 def test_module_loader_import_smuggling_chain_is_blocked():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
