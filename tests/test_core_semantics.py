@@ -2421,21 +2421,29 @@ RESULT = frame.f_generator.ag_code.co_name
     assert "gen" in env["RESULT"]
 
 
-def test_attr_guard_allows_class_bases_but_blocks_subclasses(run_interpreter):
+def test_attr_guard_blocks_class_bases_and_subclasses(run_interpreter):
     source = """
 class Derived(list):
     pass
 
 try:
-    _ = list.__subclasses__
-except Exception as blocked:
-    BLOCKED = (type(blocked).__name__, str(blocked))
+    _ = Derived.__bases__
+except Exception as blocked_bases:
+    BLOCKED_BASES = (type(blocked_bases).__name__, str(blocked_bases))
 
-RESULT = (Derived.__bases__[0] is list, BLOCKED)
+try:
+    _ = list.__subclasses__
+except Exception as blocked_subclasses:
+    BLOCKED_SUBCLASSES = (type(blocked_subclasses).__name__, str(blocked_subclasses))
+
+RESULT = (BLOCKED_BASES, BLOCKED_SUBCLASSES)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (
-        True,
+        (
+            "AttributeError",
+            "attribute access to '__bases__' is blocked in this environment",
+        ),
         (
             "AttributeError",
             "attribute access to '__subclasses__' is blocked in this environment",

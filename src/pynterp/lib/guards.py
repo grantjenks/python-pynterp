@@ -8,6 +8,7 @@ from typing import Any
 _BLOCKED_ATTR_NAMES = frozenset(
     {
         "__base__",
+        "__bases__",
         "__builtins__",
         "__closure__",
         "__code__",
