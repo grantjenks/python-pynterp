@@ -4432,6 +4432,109 @@ RESULT = getter("__reduce__")()
         interp.run(source, env=env, filename="<super_getattribute_reduce_probe>")
 
 
+def test_bound_getattribute_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__
+RESULT = getter("__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<bound_getattribute_reduce_probe>")
+
+
+def test_stateful_str_subclass_positional_name_cannot_bypass_bound_getattribute_reduce_hook_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    pass
+
+target = Probe()
+name = Sneaky("__reduce_ex__")
+getter = target.__getattribute__
+RESULT = getter(name)(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_bound_getattribute_reduce_hook_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_reduce_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    pass
+
+target = Probe()
+name = Sneaky("__reduce__")
+getter = target.__getattribute__
+RESULT = getter(name=name)()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_bound_getattribute_reduce_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_bound_getattribute_reduce_hook_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__
+key = Sneaky("name")
+RESULT = getter(**{key: "__reduce_ex__"})(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_bound_getattribute_reduce_hook_probe>",
+        )
+
+
 def test_object_getattribute_cannot_reach_coroutine_frame_globals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
