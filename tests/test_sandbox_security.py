@@ -753,6 +753,70 @@ RESULT = host.allowed_imports
         )
 
 
+def test_object_getattribute_keyword_name_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+host = object.__getattribute__(__import__, name="__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_keyword_import_callable_self_probe>",
+        )
+
+
+def test_type_getattribute_keyword_name_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+name = Sneaky("__self__")
+host = type.__getattribute__(__import__, name=name)
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_keyword_import_callable_self_probe>",
+        )
+
+
+def test_super_getattribute_keyword_name_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+getter = super(type(__import__), __import__).__getattribute__
+name = Sneaky("__self__")
+host = getter(name=name)
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_keyword_import_callable_self_probe>",
+        )
+
+
 def test_stateful_str_subclass_cannot_bypass_getattr_import_callable_self_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()

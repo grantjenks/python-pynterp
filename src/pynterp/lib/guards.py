@@ -41,9 +41,9 @@ def _normalize_attr_name(name: Any) -> str:
         raise TypeError("attribute name must be str")
     if type(name) is str:
         return name
-    # Collapse str subclasses to a plain str so hash/eq overrides cannot
-    # influence blocked-name checks or runtime attribute resolution.
-    return str(name)
+    # Collapse str subclasses to the base-string payload so str/hash/eq
+    # overrides cannot influence blocked-name checks or runtime lookup.
+    return str.__str__(name)
 
 
 class _CodeMetadataAlias:
