@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+# Reproducibility note:
+# For comparable results, run against a CPython source tree and the matching
+# built interpreter from that same tree. Mixing `--cpython-root` from one
+# checkout with `--python-exe` from a different runtime skews outcomes.
+#
+# Canonical command:
+# uv run python /Users/grantjenks/repos/python-pynterp/scripts/cpython_pynterp_probe.py \
+#   --cpython-root /tmp/cpython-3.14 \
+#   --python-exe /tmp/cpython-3.14/python.exe \
+#   --basis tests \
+#   --mode module \
+#   --strict-worker-match \
+#   --json-out /tmp/pynterp-probe-tests-module.json
 import argparse
 import ast
 import concurrent.futures
@@ -450,12 +463,167 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional file path to write a JSON report.",
     )
+    parser.add_argument(
+        "--strict-worker-match",
+        action="store_true",
+        help=(
+            "Fail fast unless the worker runtime stdlib path matches "
+            "<cpython-root>/Lib."
+        ),
+    )
     return parser.parse_args()
 
 
 def discover_test_files(cpython_root: Path) -> list[Path]:
     test_root = cpython_root / "Lib" / "test"
     return sorted(path for path in test_root.rglob("*.py") if path.name.startswith("test_"))
+
+
+def _git_ref(repo_root: Path) -> dict[str, str | None]:
+    branch: str | None = None
+    commit: str | None = None
+
+    branch_proc = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if branch_proc.returncode == 0:
+        value = branch_proc.stdout.strip()
+        branch = value or None
+
+    commit_proc = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if commit_proc.returncode == 0:
+        value = commit_proc.stdout.strip()
+        commit = value or None
+
+    return {"branch": branch, "commit": commit}
+
+
+def inspect_worker_runtime(python_exe: Path, lib_root: Path) -> dict[str, Any]:
+    payload = """
+import importlib
+import json
+import platform
+import sys
+import sysconfig
+from pathlib import Path
+
+lib_root = Path(sys.argv[1]).resolve()
+raw_stdlib = sysconfig.get_path("stdlib")
+raw_os_file = importlib.import_module("os").__file__
+
+# Mirror runner path normalization so we can validate effective stdlib usage.
+sys.path.insert(0, str(lib_root))
+if raw_stdlib:
+    try:
+        host_stdlib = Path(raw_stdlib).resolve()
+    except OSError:
+        host_stdlib = None
+else:
+    host_stdlib = None
+
+has_probe_stdlib = (lib_root / "os.py").is_file()
+has_probe_sysconfig = (lib_root / "sysconfig.py").is_file() or (
+    lib_root / "sysconfig" / "__init__.py"
+).is_file()
+if (
+    host_stdlib is not None
+    and has_probe_stdlib
+    and has_probe_sysconfig
+    and host_stdlib != lib_root
+):
+    filtered = []
+    seen = set()
+    for entry in sys.path:
+        entry_text = entry if isinstance(entry, str) else str(entry)
+        try:
+            resolved = Path(entry_text).resolve()
+        except OSError:
+            resolved = None
+        if resolved is not None and resolved == host_stdlib:
+            continue
+        key = str(resolved) if resolved is not None else entry_text
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered.append(entry_text)
+    sys.path[:] = filtered
+
+sys.modules.pop("os", None)
+patched_os_file = importlib.import_module("os").__file__
+
+print(
+    json.dumps(
+        {
+            "executable": sys.executable,
+            "version": platform.python_version(),
+            "implementation": platform.python_implementation(),
+            "prefix": sys.prefix,
+            "base_prefix": sys.base_prefix,
+            "stdlib": raw_stdlib,
+            "raw_os_file": raw_os_file,
+            "patched_os_file": patched_os_file,
+        }
+    )
+)
+"""
+    try:
+        proc = subprocess.run(
+            [str(python_exe), "-c", payload, str(lib_root)],
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        return {"error": f"failed to execute worker runtime: {exc}"}
+
+    if proc.returncode != 0:
+        reason = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
+        return {"error": f"worker runtime introspection failed: {reason}"}
+
+    raw = (proc.stdout or "").strip()
+    if not raw:
+        return {"error": "worker runtime introspection produced no output"}
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {"error": f"worker runtime introspection produced invalid JSON: {exc}"}
+
+    if not isinstance(parsed, dict):
+        return {"error": "worker runtime introspection returned non-object JSON"}
+
+    return parsed
+
+
+def worker_matches_cpython_lib(worker_runtime: dict[str, Any], cpython_root: Path) -> bool | None:
+    expected_stdlib = (cpython_root / "Lib").resolve()
+
+    patched_os_file = worker_runtime.get("patched_os_file")
+    if isinstance(patched_os_file, str) and patched_os_file:
+        try:
+            patched_path = Path(patched_os_file).resolve()
+        except OSError:
+            patched_path = None
+        if patched_path is not None:
+            if patched_path == expected_stdlib or expected_stdlib in patched_path.parents:
+                return True
+            return False
+
+    stdlib_text = worker_runtime.get("stdlib")
+    if not isinstance(stdlib_text, str) or not stdlib_text:
+        return None
+
+    try:
+        worker_stdlib = Path(stdlib_text).resolve()
+    except OSError:
+        return None
+
+    return worker_stdlib == expected_stdlib
 
 
 def compile_source_patterns(raw_patterns: tuple[str, ...] | list[str]) -> tuple[re.Pattern[str], ...]:
@@ -732,6 +900,28 @@ def main() -> int:
     if not pynterp_src.exists():
         raise SystemExit(f"pynterp src path not found: {pynterp_src}")
 
+    cpython_git = _git_ref(cpython_root)
+    worker_runtime = inspect_worker_runtime(python_exe, cpython_root / "Lib")
+    worker_stdlib_match = worker_matches_cpython_lib(worker_runtime, cpython_root)
+    expected_stdlib = (cpython_root / "Lib").resolve()
+    reproducibility_warnings: list[str] = []
+
+    if worker_stdlib_match is False:
+        reproducibility_warnings.append(
+            "worker stdlib does not match <cpython-root>/Lib; results are not directly comparable"
+        )
+    elif worker_stdlib_match is None:
+        reproducibility_warnings.append(
+            "unable to confirm whether worker stdlib matches <cpython-root>/Lib"
+        )
+
+    if args.strict_worker_match and worker_stdlib_match is not True:
+        raise SystemExit(
+            "Strict worker match failed. "
+            f"Expected stdlib {expected_stdlib}, got "
+            f"{worker_runtime.get('stdlib', '<unknown>')} from {python_exe}."
+        )
+
     unsupported_raw_patterns = []
     if not args.no_default_unsupported:
         unsupported_raw_patterns.extend(DEFAULT_UNSUPPORTED_PATTERNS)
@@ -923,9 +1113,13 @@ def main() -> int:
         "basis": args.basis,
         "mode": args.mode,
         "cpython_root": str(cpython_root),
+        "cpython_git": cpython_git,
         "python_exe": str(python_exe),
+        "worker_runtime": worker_runtime,
+        "worker_matches_cpython_lib": worker_stdlib_match,
         "pynterp_src": str(pynterp_src),
         "unsupported_patterns": list(unsupported_raw_patterns),
+        "reproducibility_warnings": reproducibility_warnings,
         "total_test_files": total_count,
         "applicable_test_files": applicable_count,
         "not_applicable_test_files": len(excluded),
@@ -980,6 +1174,20 @@ def main() -> int:
 
     print(f"basis: {args.basis}")
     print(f"mode: {args.mode}")
+    print(f"cpython_git_branch: {cpython_git.get('branch')}")
+    print(f"cpython_git_commit: {cpython_git.get('commit')}")
+    print(f"worker_python_exe: {worker_runtime.get('executable', str(python_exe))}")
+    print(f"worker_python_version: {worker_runtime.get('version', '<unknown>')}")
+    print(f"worker_python_impl: {worker_runtime.get('implementation', '<unknown>')}")
+    print(f"worker_python_stdlib_raw: {worker_runtime.get('stdlib', '<unknown>')}")
+    print(f"worker_os_file_raw: {worker_runtime.get('raw_os_file', '<unknown>')}")
+    print(f"worker_os_file_patched: {worker_runtime.get('patched_os_file', '<unknown>')}")
+    print(f"expected_cpython_stdlib: {expected_stdlib}")
+    print(f"worker_matches_cpython_lib: {worker_stdlib_match}")
+    if reproducibility_warnings:
+        print("reproducibility_warnings:")
+        for warning in reproducibility_warnings:
+            print(f"  - {warning}")
     print(f"total_test_files: {total_count}")
     print(f"applicable_test_files: {applicable_count}")
     print(f"not_applicable_test_files: {len(excluded)}")
