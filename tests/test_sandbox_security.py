@@ -4711,3 +4711,95 @@ RESULT = cells[0].cell_contents
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_closure_probe>",
         )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_object_getattribute_setattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+class Probe:
+    pass
+
+target = Probe()
+key = Sneaky("name")
+RESULT = object.__getattribute__(target, **{key: "__setattr__"})("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_object_getattribute_setattr_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_type_getattribute_delattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+key = Sneaky("name")
+RESULT = type.__getattribute__(target, **{key: "__delattr__"})("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_type_getattribute_delattr_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_super_getattribute_dunder_getattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+key = Sneaky("name")
+RESULT = getter(**{key: "__getattr__"})("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_super_getattribute_dunder_getattr_probe>",
+        )
