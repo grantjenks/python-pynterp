@@ -2646,6 +2646,80 @@ RESULT = type.__getattribute__(gen, name=name)
         )
 
 
+def test_bound_getattribute_keyword_name_cannot_reach_generator_frame():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def make_gen():
+    yield 1
+
+gen = make_gen()
+getter = gen.__getattribute__
+RESULT = getter(name="gi_frame")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_keyword_generator_frame_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_object_getattribute_generator_frame_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+def make_gen():
+    yield 1
+
+gen = make_gen()
+name = Sneaky("gi_frame")
+RESULT = object.__getattribute__(gen, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_object_getattribute_generator_frame_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_super_getattribute_generator_frame_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+def make_gen():
+    yield 1
+
+gen = make_gen()
+getter = super(type(gen), gen).__getattribute__
+name = Sneaky("gi_frame")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_super_getattribute_generator_frame_probe>",
+        )
+
+
 def test_bound_getattribute_keyword_name_cannot_reach_generator_frame_globals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
