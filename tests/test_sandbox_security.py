@@ -10841,3 +10841,86 @@ RESULT = getter(**{key: "__base__"})
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_type_getattribute_class_base_probe>",
         )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_loader():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter("__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_spec():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter("__spec__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_dict_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter("__dict__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_module_type_bound_getattribute_module_loader_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+key = Sneaky("name")
+RESULT = getter(**{key: "__loader__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
+        )
