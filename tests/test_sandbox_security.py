@@ -240,6 +240,49 @@ RESULT = getter("__dict__")
         interp.run(source, env=env, filename="<super_getattribute_probe>")
 
 
+def test_builtin_callable_self_module_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+builtins_mod = len.__self__
+RESULT = builtins_mod.open
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<builtin_callable_self_probe>")
+
+
+def test_object_getattribute_cannot_reach_builtin_callable_self_module():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = object.__getattribute__
+builtins_mod = getter(len, "__self__")
+RESULT = builtins_mod.open
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_builtin_callable_self_probe>",
+        )
+
+
+def test_type_getattribute_cannot_reach_builtin_callable_self_module():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = type.__getattribute__
+builtins_mod = getter(len, "__self__")
+RESULT = builtins_mod.open
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_builtin_callable_self_probe>",
+        )
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
