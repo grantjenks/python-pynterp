@@ -6927,6 +6927,44 @@ finally:
         )
 
 
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+async def compute():
+    return 1
+
+co = compute()
+try:
+    frame = co.cr_frame
+    getter = frame.__getattribute__.__get__(None, type(frame))
+    key = Sneaky("name")
+    RESULT = getter(**{key: "f_builtins"})
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_async_generator_frame_globals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
