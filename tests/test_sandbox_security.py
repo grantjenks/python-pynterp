@@ -7144,6 +7144,22 @@ RESULT = getter("__reduce_ex__")(4)
         )
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_reduce():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter("__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_reduce_hook():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -7160,6 +7176,22 @@ RESULT = getter(name="__reduce__")()
         )
 
 
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_reduce_ex_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(name="__reduce_ex__")(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_ex_keyword_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_reduce_hook():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -7173,6 +7205,22 @@ RESULT = getter(**{"name": "__reduce_ex__"})(4)
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_hook_keyword_key_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_reduce():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(**{"name": "__reduce__"})()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_reduce_keyword_key_probe>",
         )
 
 
