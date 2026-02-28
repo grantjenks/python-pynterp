@@ -6658,6 +6658,23 @@ RESULT = getter("__loader__")
         )
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_module_spec():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+RESULT = getter("__spec__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_module_spec_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_module_dict_metadata():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
@@ -6746,6 +6763,36 @@ RESULT = getter(name)
         )
 
 
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_module_loader_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+name = Sneaky("__loader__")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_module_loader_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_builtin_self():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -6781,6 +6828,36 @@ RESULT = getter(name=name)
         )
 
 
+def test_stateful_str_subclass_positional_name_cannot_bypass_descriptor_rebound_bound_getattribute_module_spec_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+name = Sneaky("__spec__")
+RESULT = getter(name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_module_spec_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_module_spec_guard():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
@@ -6810,6 +6887,28 @@ RESULT = getter(**{key: "__spec__"})
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_module_spec_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_module_loader_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+key = Sneaky("name")
+RESULT = getter(**{key: "__loader__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_module_loader_probe>",
         )
 
 
