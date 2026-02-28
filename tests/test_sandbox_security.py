@@ -587,6 +587,81 @@ RESULT = fn.__closure__[0].cell_contents
         interp.run(source, env=env, filename="<closure_cell_probe>")
 
 
+def test_object_getattribute_cannot_reach_function_closure_cells():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = object.__getattribute__
+cells = getter(fn, "__closure__")
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_closure_cell_probe>",
+        )
+
+
+def test_type_getattribute_cannot_reach_function_closure_cells():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = type.__getattribute__
+cells = getter(fn, "__closure__")
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_closure_cell_probe>",
+        )
+
+
+def test_super_getattribute_cannot_reach_function_closure_cells():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = super(type(fn), fn).__getattribute__
+cells = getter("__closure__")
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_closure_cell_probe>",
+        )
+
+
 def test_reduction_hook_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
