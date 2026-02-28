@@ -2151,7 +2151,7 @@ RESULT = list(run())
     assert env["RESULT"] == [(1, [2, 3], 4)]
 
 
-def test_attr_guard_allows_module_metadata_and_bound_method_func(run_interpreter):
+def test_attr_guard_blocks_module_loader_metadata_and_allows_bound_method_func(run_interpreter):
     source = """
 import math
 
@@ -2160,16 +2160,27 @@ class Box:
         return 42
 
 box = Box()
-RESULT = (
-    math.__spec__ is not None,
-    math.__loader__ is not None,
-    getattr(math, "__spec__") is math.__spec__,
-    hasattr(math, "__loader__"),
-    box.value.__func__.__name__,
-)
+try:
+    math.__spec__
+except Exception as blocked:
+    blocked_spec = (type(blocked).__name__, str(blocked))
+
+try:
+    math.__loader__
+except Exception as blocked:
+    blocked_loader = (type(blocked).__name__, str(blocked))
+
+RESULT = (blocked_spec, blocked_loader, box.value.__func__.__name__)
 """
     env = run_interpreter(source, allowed_imports={"math"})
-    assert env["RESULT"] == (True, True, True, True, "value")
+    assert env["RESULT"] == (
+        ("AttributeError", "attribute access to '__spec__' is blocked in this environment"),
+        (
+            "AttributeError",
+            "attribute access to '__loader__' is blocked in this environment",
+        ),
+        "value",
+    )
 
 
 def test_attr_guard_allows_getattribute_call_but_still_blocks_sensitive_names(run_interpreter):

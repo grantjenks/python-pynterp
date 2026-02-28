@@ -204,3 +204,39 @@ RESULT = getter(target, "__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_reduce_hook_probe>")
+
+
+def test_module_loader_import_smuggling_chain_is_blocked():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+loader = math.__loader__
+RESULT = loader.load_module("os")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<module_loader_import_smuggling_probe>")
+
+
+def test_module_spec_import_smuggling_chain_is_blocked():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+spec = math.__spec__
+RESULT = spec.loader.load_module("os")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<module_spec_import_smuggling_probe>")
+
+
+def test_object_getattribute_cannot_reach_module_loader_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+getter = object.__getattribute__
+RESULT = getter(math, "__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_module_loader_probe>")
