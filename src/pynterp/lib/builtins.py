@@ -38,6 +38,7 @@ _COMMON_BUILTIN_NAMES = (
     "min",
     "next",
     "object",
+    "property",
     "print",
     "range",
     "reversed",

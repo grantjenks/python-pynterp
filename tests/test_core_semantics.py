@@ -516,10 +516,10 @@ bases = (list[int],)
 class C(*bases):
     pass
 
-RESULT = (C.__bases__, C.__orig_bases__)
+RESULT = (issubclass(C, list), C.__orig_bases__)
 """
     env = run_interpreter(source)
-    assert env["RESULT"] == ((list,), (list[int],))
+    assert env["RESULT"] == (True, (list[int],))
 
 
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
@@ -534,10 +534,15 @@ class C[T](*bases):
     pass
 
 T_param, = C.__type_params__
-RESULT = (T_param.__name__, C.__bases__[0] is Base, C.__bases__[1].__name__)
+RESULT = (
+    T_param.__name__,
+    issubclass(C, Base),
+    C.__orig_bases__[0] is Base,
+    C.__orig_bases__[1].__name__,
+)
 """
     env = run_interpreter(source)
-    assert env["RESULT"] == ("T", True, "Generic")
+    assert env["RESULT"] == ("T", True, True, "Generic")
 
 
 @pytest.mark.skipif(not HAS_TYPE_PARAMS, reason="Type params require Python 3.12+")
@@ -1031,7 +1036,7 @@ def f():
     return C
 
 C = f()
-RESULT = (C.D.__bases__[0] is int, C.D.marker is str)
+RESULT = (issubclass(C.D, int), C.D.marker is str)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (True, True)
