@@ -50,6 +50,8 @@ def test_make_default_env_exposes_expanded_common_builtins():
     assert "chr" in builtins_dict
     assert "ord" in builtins_dict
     assert "pow" in builtins_dict
+    assert "exit" in builtins_dict
+    assert "quit" in builtins_dict
     assert "open" not in builtins_dict
 
 
