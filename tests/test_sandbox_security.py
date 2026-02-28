@@ -983,6 +983,53 @@ RESULT = builtins_mod.open
         )
 
 
+def test_bound_getattribute_cannot_reach_builtin_callable_self_module():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = len.__getattribute__
+builtins_mod = getter("__self__")
+RESULT = builtins_mod.open
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_builtin_callable_self_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_bound_getattribute_builtin_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = len.__getattribute__
+key = Sneaky("name")
+builtins_mod = getter(**{key: "__self__"})
+RESULT = builtins_mod.open
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_bound_getattribute_builtin_callable_self_probe>",
+        )
+
+
 def test_import_callable_self_interpreter_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -1186,6 +1233,53 @@ RESULT = getter(name).allowed_imports
             source,
             env=env,
             filename="<stateful_str_super_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_bound_getattribute_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = __import__.__getattribute__
+host = getter("__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_bound_getattribute_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = __import__.__getattribute__
+key = Sneaky("name")
+host = getter(**{key: "__self__"})
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_bound_getattribute_import_callable_self_probe>",
         )
 
 
