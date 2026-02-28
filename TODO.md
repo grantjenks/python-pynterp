@@ -265,6 +265,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 385 -> 389 (+4). Validation gates this iteration: `8 passed` with `381 deselected` (targeted descriptor-rebound class-hierarchy keyword slice), `389 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 113): added descriptor-rebound `type.__getattribute__` class-hierarchy direct-access regressions for blocked `__mro__`, `__bases__`, and `__base__` pivots.
 - Metrics: `tests/test_sandbox_security.py` cases 389 -> 392 (+3). Validation gates this iteration: `11 passed` with `381 deselected` (targeted descriptor-rebound class-hierarchy direct slice), `392 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 114): added descriptor-rebound `type.__getattribute__` class-hierarchy regression for the missing hostile positional-name `__subclasses__` probe via a stateful `str` subclass.
+- Metrics: `tests/test_sandbox_security.py` cases 392 -> 393 (+1). Validation gates this iteration: `1 passed` with `392 deselected` (targeted descriptor-rebound class-subclasses positional slice), `393 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
