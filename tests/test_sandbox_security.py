@@ -1874,6 +1874,96 @@ RESULT = getter(Probe, **{key: "__bases__"})[0]
         )
 
 
+def test_metaclass_getattribute_cannot_reach_base_pivot():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+getter = Meta.__getattribute__
+RESULT = getter(Probe, "__base__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<metaclass_getattribute_base_probe>")
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_metaclass_getattribute_base_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = Meta.__getattribute__
+name = Sneaky("__base__")
+RESULT = getter(Probe, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_metaclass_getattribute_class_base_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_metaclass_getattribute_base_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = Meta.__getattribute__
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__base__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_metaclass_getattribute_class_base_probe>",
+        )
+
+
 def test_object_getattribute_cannot_reach_class_subclasses():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
