@@ -32,3 +32,20 @@ def test_make_default_env_provides_explicit_safe_defaults():
         env=env,
     )
     assert env["RESULT"] == (3, 9)
+
+
+def test_make_default_env_exposes_expanded_common_builtins():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+    builtins_dict = env["__builtins__"]
+
+    assert "AssertionError" in builtins_dict
+    assert "DeprecationWarning" in builtins_dict
+    assert "Ellipsis" in builtins_dict
+    assert "NotImplemented" in builtins_dict
+    assert "repr" in builtins_dict
+    assert "sorted" in builtins_dict
+    assert "chr" in builtins_dict
+    assert "ord" in builtins_dict
+    assert "pow" in builtins_dict
+    assert "open" not in builtins_dict
