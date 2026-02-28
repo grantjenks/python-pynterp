@@ -596,6 +596,65 @@ RESULT = getter("__delattr__")("marker")
         interp.run(source, env=env, filename="<super_getattribute_delattr_probe>")
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter("__setattr__")("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_setattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter("__delattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_delattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter("__getattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_dunder_getattr_probe>",
+        )
+
+
 def test_function_code_object_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
