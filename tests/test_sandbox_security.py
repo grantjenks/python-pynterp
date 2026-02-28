@@ -195,6 +195,28 @@ RESULT = tb.tb_frame.f_locals["__builtins__"]
         interp.run(source, env=env, filename="<traceback_tb_next_frame_locals_probe>")
 
 
+def test_traceback_f_back_chain_globals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+    while frame.f_back is not None:
+        frame = frame.f_back
+RESULT = frame.f_globals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<traceback_f_back_frame_globals_probe>")
+
+
 def test_object_getattribute_cannot_reach_traceback_frame_globals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -232,6 +254,65 @@ RESULT = getter(tb.tb_frame, "f_builtins")
             source,
             env=env,
             filename="<object_getattribute_traceback_frame_builtins_probe>",
+        )
+
+
+def test_object_getattribute_tb_frame_back_chain_cannot_reach_frame_builtins():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    getter = object.__getattribute__
+    tb = getter(exc, "__traceback__")
+    frame = getter(tb, "tb_frame")
+    while getter(frame, "f_back") is not None:
+        frame = getter(frame, "f_back")
+
+RESULT = getter(frame, "f_builtins")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_tb_frame_back_chain_frame_builtins_probe>",
+        )
+
+
+def test_type_getattribute_tb_frame_back_chain_cannot_reach_frame_locals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    tb = exc.__traceback__
+
+tb_getter = type(tb).__getattribute__
+frame = tb_getter(tb, "tb_frame")
+frame_getter = type(frame).__getattribute__
+while frame_getter(frame, "f_back") is not None:
+    frame = frame_getter(frame, "f_back")
+RESULT = frame_getter(frame, "f_locals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_tb_frame_back_chain_frame_locals_probe>",
         )
 
 
