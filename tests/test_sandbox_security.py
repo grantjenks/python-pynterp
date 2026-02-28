@@ -7207,6 +7207,27 @@ RESULT = getter(**{key: "__reduce__"})()
         )
 
 
+def test_str_subclass_str_override_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_reduce_hook_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+target = [1, 2, 3]
+getter = target.__getattribute__.__get__(None, type(target))
+key = Sneaky("name")
+RESULT = getter(**{key: "__reduce_ex__"})(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_reduce_hook_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
