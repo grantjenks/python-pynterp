@@ -829,6 +829,66 @@ RESULT = getter(target, "__reduce__")()
         interp.run(source, env=env, filename="<object_getattribute_reduce_probe>")
 
 
+def test_type_getattribute_cannot_reach_reduction_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = type.__getattribute__
+RESULT = getter(target, "__reduce_ex__")(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_reduce_hook_probe>")
+
+
+def test_type_getattribute_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = type.__getattribute__
+RESULT = getter(target, "__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_reduce_probe>")
+
+
+def test_super_getattribute_cannot_reach_reduction_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+RESULT = getter("__reduce_ex__")(4)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_reduce_hook_probe>")
+
+
+def test_super_getattribute_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+RESULT = getter("__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_reduce_probe>")
+
+
 def test_object_getattribute_cannot_reach_coroutine_frame_globals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
