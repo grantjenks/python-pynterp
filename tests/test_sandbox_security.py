@@ -10105,3 +10105,75 @@ RESULT = getter(Probe, **{key: "__base__"})
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_base_probe>",
         )
+
+
+def test_descriptor_rebound_bound_type_getattribute_cannot_reach_class_subclasses():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(Probe, type(Probe))
+RESULT = getter("__subclasses__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_type_getattribute_cannot_reach_class_mro():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(Probe, type(Probe))
+RESULT = getter("__mro__")[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_type_getattribute_class_mro_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_type_getattribute_cannot_reach_class_bases():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(Probe, type(Probe))
+RESULT = getter("__bases__")[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_type_getattribute_class_bases_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_type_getattribute_cannot_reach_class_base():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(Probe, type(Probe))
+RESULT = getter("__base__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_type_getattribute_class_base_probe>",
+        )

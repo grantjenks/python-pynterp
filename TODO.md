@@ -273,6 +273,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 397 -> 401 (+4). Validation gates this iteration: `8 passed` with `393 deselected` (targeted descriptor-rebound class-hierarchy keyword-name slice), `401 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 117): completed descriptor-rebound `type.__getattribute__` class-hierarchy keyword-key matrix coverage by adding the missing complementary hostile variants (`str.__str__`-override probe for `__subclasses__`/`__bases__` and stateful `str`-subclass probes for `__mro__`/`__base__`).
 - Metrics: `tests/test_sandbox_security.py` cases 401 -> 405 (+4). Validation gates this iteration: `8 passed` with `397 deselected` (targeted descriptor-rebound class-hierarchy keyword-key slice), `405 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 118): added descriptor-rebound regressions for bound metatype lookup (`type.__getattribute__.__get__(Probe, type(Probe))`) to ensure blocked class-hierarchy pivots remain denied for direct `__subclasses__`, `__mro__`, `__bases__`, and `__base__` access.
+- Metrics: `tests/test_sandbox_security.py` cases 405 -> 409 (+4). Validation gates this iteration: `4 passed` with `405 deselected` (targeted bound descriptor-rebound class-hierarchy slice), `409 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
