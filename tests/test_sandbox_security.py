@@ -360,6 +360,22 @@ RESULT = host.allowed_imports
         )
 
 
+def test_super_getattribute_cannot_reach_import_callable_self_interpreter():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = super(type(__import__), __import__).__getattribute__
+host = getter("__self__")
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_import_callable_self_probe>",
+        )
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -631,3 +647,27 @@ RESULT = getter(math, "__loader__")
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_module_loader_probe>")
+
+
+def test_type_getattribute_cannot_reach_module_spec_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+getter = type.__getattribute__
+RESULT = getter(math, "__spec__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_module_spec_probe>")
+
+
+def test_super_getattribute_cannot_reach_module_loader_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+getter = super(type(math), math).__getattribute__
+RESULT = getter("__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_module_loader_probe>")
