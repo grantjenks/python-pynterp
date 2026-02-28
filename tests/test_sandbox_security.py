@@ -513,6 +513,60 @@ RESULT = getter(Probe, "__subclasses__")
         interp.run(source, env=env, filename="<metaclass_getattribute_probe>")
 
 
+def test_object_getattribute_cannot_reach_class_subclasses():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = object.__getattribute__
+RESULT = getter(Probe, "__subclasses__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_class_subclasses_probe>",
+        )
+
+
+def test_type_getattribute_cannot_reach_class_subclasses():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__
+RESULT = getter(Probe, "__subclasses__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_class_subclasses_probe>",
+        )
+
+
+def test_super_getattribute_cannot_reach_class_subclasses():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = super(type(Probe), Probe).__getattribute__
+RESULT = getter("__subclasses__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_class_subclasses_probe>",
+        )
+
+
 def test_class_base_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
