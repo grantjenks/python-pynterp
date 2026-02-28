@@ -4348,3 +4348,105 @@ RESULT = getter(**{key: "__reduce__"})()
             env=env,
             filename="<str_override_keyword_key_super_getattribute_reduce_probe>",
         )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_object_getattribute_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+def outer():
+    secret = 42
+    def inner():
+        return secret
+    return inner
+
+fn = outer()
+key = Sneaky("name")
+cells = object.__getattribute__(fn, **{key: "__closure__"})
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_object_getattribute_closure_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_type_getattribute_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+def outer():
+    secret = 42
+    def inner():
+        return secret
+    return inner
+
+fn = outer()
+key = Sneaky("name")
+cells = type.__getattribute__(fn, **{key: "__closure__"})
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_type_getattribute_closure_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_super_getattribute_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+def outer():
+    secret = 42
+    def inner():
+        return secret
+    return inner
+
+fn = outer()
+getter = super(type(fn), fn).__getattribute__
+key = Sneaky("name")
+cells = getter(**{key: "__closure__"})
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_super_getattribute_closure_probe>",
+        )
