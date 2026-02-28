@@ -1622,6 +1622,41 @@ RESULT = getter(Probe, name)()
         )
 
 
+def test_stateful_str_subclass_positional_name_cannot_bypass_metaclass_getattribute_subclasses_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = Meta.__getattribute__
+name = Sneaky("__subclasses__")
+RESULT = getter(Probe, name)()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_metaclass_getattribute_class_subclasses_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_name_cannot_bypass_metaclass_getattribute_subclasses_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -1790,6 +1825,41 @@ RESULT = getter(Probe, name)[0]
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_mro_probe>",
+        )
+
+
+def test_stateful_str_subclass_positional_name_cannot_bypass_metaclass_getattribute_mro_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = Meta.__getattribute__
+name = Sneaky("__mro__")
+RESULT = getter(Probe, name)[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_metaclass_getattribute_class_mro_probe>",
         )
 
 
@@ -1964,6 +2034,41 @@ RESULT = getter(Probe, name)[0]
         )
 
 
+def test_stateful_str_subclass_positional_name_cannot_bypass_metaclass_getattribute_bases_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = Meta.__getattribute__
+name = Sneaky("__bases__")
+RESULT = getter(Probe, name)[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_metaclass_getattribute_class_bases_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_name_cannot_bypass_metaclass_getattribute_bases_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -2132,6 +2237,41 @@ RESULT = getter(Probe, name)
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_base_probe>",
+        )
+
+
+def test_stateful_str_subclass_positional_name_cannot_bypass_metaclass_getattribute_base_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = Meta.__getattribute__
+name = Sneaky("__base__")
+RESULT = getter(Probe, name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_metaclass_getattribute_class_base_probe>",
         )
 
 
