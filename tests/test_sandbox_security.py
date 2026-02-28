@@ -9532,6 +9532,116 @@ RESULT = getter(Probe, name=name)[0]
         )
 
 
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_type_getattribute_class_bases_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+name = Sneaky("__bases__")
+RESULT = getter(Probe, name=name)[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_type_getattribute_class_bases_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_type_getattribute_class_base_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_base"
+
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+name = Sneaky("__base__")
+RESULT = getter(Probe, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_type_getattribute_class_base_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_type_getattribute_class_subclasses_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__subclasses__"})()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_type_getattribute_class_subclasses_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_descriptor_rebound_type_getattribute_class_mro_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__mro__"})[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_mro_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_type_getattribute_class_bases_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
