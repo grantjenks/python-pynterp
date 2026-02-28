@@ -1466,6 +1466,90 @@ RESULT = func_getter("__globals__")["__builtins__"]
         )
 
 
+def test_stateful_str_subclass_keyword_key_cannot_bypass_object_getattribute_import_callable_func_globals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = object.__getattribute__
+func = getter(__import__, "__func__")
+key = Sneaky("name")
+RESULT = getter(func, **{key: "__globals__"})["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_object_getattribute_import_callable_func_globals_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_type_getattribute_import_callable_func_globals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+method_getter = type(__import__).__getattribute__
+func = method_getter(__import__, "__func__")
+key = Sneaky("name")
+RESULT = type.__getattribute__(func, **{key: "__globals__"})["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_type_getattribute_import_callable_func_globals_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_super_getattribute_import_callable_func_globals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+import_getter = super(type(__import__), __import__).__getattribute__
+func = import_getter("__func__")
+func_getter = super(type(func), func).__getattribute__
+key = Sneaky("name")
+RESULT = func_getter(**{key: "__globals__"})["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_super_getattribute_import_callable_func_globals_probe>",
+        )
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
