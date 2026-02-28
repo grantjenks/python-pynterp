@@ -279,6 +279,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 409 -> 413 (+4). Validation gates this iteration: `4 passed` with `409 deselected` (targeted bound descriptor-rebound positional-name slice), `413 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 120): expanded bound metatype descriptor-rebound class-hierarchy regressions with missing `str.__str__`-override positional-name probes for blocked `__subclasses__`, `__mro__`, `__bases__`, and `__base__` pivots.
 - Metrics: `tests/test_sandbox_security.py` cases 413 -> 417 (+4). Validation gates this iteration: `4 passed` with `413 deselected` (targeted bound descriptor-rebound `str`-override positional slice), `417 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 121): expanded bound metatype descriptor-rebound class-hierarchy regressions with hostile keyword-name (`name=...`) probes via stateful `str` subclasses for blocked `__subclasses__`, `__mro__`, `__bases__`, and `__base__` pivots.
+- Metrics: `tests/test_sandbox_security.py` cases 417 -> 421 (+4). Validation gates this iteration: `4 passed` with `417 deselected` (targeted bound descriptor-rebound keyword-name stateful slice), `421 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
