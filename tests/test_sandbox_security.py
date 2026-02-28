@@ -1719,6 +1719,158 @@ RESULT = getter(name=name)
         )
 
 
+def test_dunder_getattr_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+RESULT = target.__getattr__("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<dunder_getattr_probe>")
+
+
+def test_object_getattribute_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = object.__getattribute__
+RESULT = getter(target, "__getattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_dunder_getattr_probe>")
+
+
+def test_type_getattribute_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = type.__getattribute__
+RESULT = getter(target, "__getattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_dunder_getattr_probe>")
+
+
+def test_super_getattribute_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+RESULT = getter("__getattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_dunder_getattr_probe>")
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_object_getattribute_dunder_getattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+target = Probe()
+name = Sneaky("__getattr__")
+RESULT = object.__getattribute__(target, name=name)("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_object_getattribute_dunder_getattr_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_type_getattribute_dunder_getattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+target = Probe()
+name = Sneaky("__getattr__")
+RESULT = type.__getattribute__(target, name=name)("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_type_getattribute_dunder_getattr_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_super_getattribute_dunder_getattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+name = Sneaky("__getattr__")
+RESULT = getter(name=name)("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_super_getattribute_dunder_getattr_probe>",
+        )
+
+
 def test_function_closure_cell_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
