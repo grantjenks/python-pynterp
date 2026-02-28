@@ -1979,6 +1979,18 @@ RESULT = getter(math, "__dict__")
         interp.run(source, env=env, filename="<object_getattribute_module_dict_probe>")
 
 
+def test_super_getattribute_cannot_reach_module_dict_metadata():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+getter = super(type(math), math).__getattribute__
+RESULT = getter("__dict__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_module_dict_probe>")
+
+
 def test_type_getattribute_cannot_reach_module_spec_metadata():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
@@ -2189,4 +2201,47 @@ RESULT = type.__getattribute__(math, name=name)
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_module_dict_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_object_getattribute_module_dict_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+name = Sneaky("__dict__")
+RESULT = object.__getattribute__(math, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_object_getattribute_module_dict_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_super_getattribute_module_dict_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+getter = super(type(math), math).__getattribute__
+name = Sneaky("__dict__")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_super_getattribute_module_dict_probe>",
         )
