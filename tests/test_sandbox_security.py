@@ -318,6 +318,20 @@ RESULT = target.__reduce_ex__(4)
         interp.run(source, env=env, filename="<reduce_hook_probe>")
 
 
+def test_reduce_hook_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+RESULT = target.__reduce__()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<reduce_probe>")
+
+
 def test_object_getattribute_cannot_reach_reduction_hook():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -331,6 +345,21 @@ RESULT = getter(target, "__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<object_getattribute_reduce_hook_probe>")
+
+
+def test_object_getattribute_cannot_reach_reduce_hook():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = object.__getattribute__
+RESULT = getter(target, "__reduce__")()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_reduce_probe>")
 
 
 def test_object_getattribute_cannot_reach_coroutine_frame_globals():
@@ -353,6 +382,26 @@ finally:
             source,
             env=env,
             filename="<object_getattribute_coroutine_frame_globals_probe>",
+        )
+
+
+def test_object_getattribute_cannot_reach_generator_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def make_gen():
+    yield 1
+
+gen = make_gen()
+getter = object.__getattribute__
+frame = getter(gen, "gi_frame")
+RESULT = getter(frame, "f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_generator_frame_globals_probe>",
         )
 
 
