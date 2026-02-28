@@ -1694,6 +1694,33 @@ RESULT = getter(Probe, **{key: "__subclasses__"})()
         )
 
 
+def test_str_subclass_str_override_keyword_key_cannot_bypass_metaclass_getattribute_subclasses_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+getter = Meta.__getattribute__
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__subclasses__"})()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_metaclass_getattribute_class_subclasses_probe>",
+        )
+
+
 def test_metaclass_getattribute_cannot_reach_mro_pivot():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -1808,6 +1835,33 @@ RESULT = getter(Probe, **{key: "__mro__"})[0]
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_mro_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_metaclass_getattribute_mro_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+getter = Meta.__getattribute__
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__mro__"})[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_metaclass_getattribute_class_mro_probe>",
         )
 
 
@@ -1928,6 +1982,33 @@ RESULT = getter(Probe, **{key: "__bases__"})[0]
         )
 
 
+def test_str_subclass_str_override_keyword_key_cannot_bypass_metaclass_getattribute_bases_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+getter = Meta.__getattribute__
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__bases__"})[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_metaclass_getattribute_class_bases_probe>",
+        )
+
+
 def test_metaclass_getattribute_cannot_reach_base_pivot():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -2042,6 +2123,33 @@ RESULT = getter(Probe, **{key: "__base__"})
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_base_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_metaclass_getattribute_base_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Meta(type):
+    def __getattribute__(cls, name):
+        return type.__getattribute__(cls, name)
+
+class Probe(metaclass=Meta):
+    pass
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+getter = Meta.__getattribute__
+key = Sneaky("name")
+RESULT = getter(Probe, **{key: "__base__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_metaclass_getattribute_class_base_probe>",
         )
 
 
