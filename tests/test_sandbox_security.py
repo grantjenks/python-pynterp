@@ -9389,6 +9389,60 @@ RESULT = getter(Probe, "__subclasses__")()
         )
 
 
+def test_descriptor_rebound_type_getattribute_cannot_reach_class_mro():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+RESULT = getter(Probe, "__mro__")[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_type_getattribute_class_mro_probe>",
+        )
+
+
+def test_descriptor_rebound_type_getattribute_cannot_reach_class_bases():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+RESULT = getter(Probe, "__bases__")[0]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_type_getattribute_class_bases_probe>",
+        )
+
+
+def test_descriptor_rebound_type_getattribute_cannot_reach_class_base():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+getter = type.__getattribute__.__get__(None, type(Probe))
+RESULT = getter(Probe, "__base__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_type_getattribute_class_base_probe>",
+        )
+
+
 def test_stateful_str_subclass_positional_name_cannot_bypass_descriptor_rebound_type_getattribute_class_mro_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
