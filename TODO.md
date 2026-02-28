@@ -299,6 +299,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 449 -> 453 (+4). Validation gates this iteration: `11 passed` with `442 deselected` (targeted module-type bound-getattribute keyword-dispatch slice), `453 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 130): closed the remaining module-type bound-`__getattribute__` keyword-name gap for `str.__str__`-override probes by adding blocked `name=Sneaky("__dict__")` coverage against descriptor-rebound module metadata access.
 - Metrics: `tests/test_sandbox_security.py` cases 453 -> 454 (+1). Validation gates this iteration: `1 passed` with `453 deselected` (targeted module-type bound-getattribute keyword-name dict slice), `454 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 131): added direct keyword-name and keyword-key descriptor-rebound module-type bound-`__getattribute__` regressions for blocked `__loader__`/`__spec__`/`__dict__` metadata pivots, closing plain keyword-dispatch coverage gaps.
+- Metrics: `tests/test_sandbox_security.py` cases 454 -> 460 (+6). Validation gates this iteration: `460 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.

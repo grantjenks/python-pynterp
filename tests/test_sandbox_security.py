@@ -10894,6 +10894,111 @@ RESULT = getter("__dict__")
         )
 
 
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_loader_via_keyword_name():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter(name="__loader__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_keyword_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_spec_via_keyword_name():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter(name="__spec__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_keyword_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_dict_metadata_via_keyword_name():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+RESULT = getter(name="__dict__")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_keyword_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_loader_via_keyword_key():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+key = "name"
+RESULT = getter(**{key: "__loader__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_keyword_key_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_spec_via_keyword_key():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+key = "name"
+RESULT = getter(**{key: "__spec__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_keyword_key_probe>",
+        )
+
+
+def test_descriptor_rebound_module_type_bound_getattribute_cannot_reach_module_dict_metadata_via_keyword_key():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+key = "name"
+RESULT = getter(**{key: "__dict__"})
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_keyword_key_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_module_type_bound_getattribute_module_loader_guard():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
