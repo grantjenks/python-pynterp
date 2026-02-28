@@ -1623,6 +1623,78 @@ RESULT = getter(frame, "f_globals")
         )
 
 
+def test_type_getattribute_cannot_reach_generator_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def make_gen():
+    yield 1
+
+gen = make_gen()
+getter = type.__getattribute__
+frame = getter(gen, "gi_frame")
+RESULT = getter(frame, "f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_generator_frame_globals_probe>",
+        )
+
+
+def test_super_getattribute_cannot_reach_generator_frame_builtins():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def make_gen():
+    yield 1
+
+gen = make_gen()
+gen_getter = super(type(gen), gen).__getattribute__
+frame = gen_getter("gi_frame")
+frame_getter = super(type(frame), frame).__getattribute__
+RESULT = frame_getter("f_builtins")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_generator_frame_builtins_probe>",
+        )
+
+
+def test_stateful_str_subclass_cannot_bypass_type_getattribute_generator_frame_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def make_gen():
+    yield 1
+
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+gen = make_gen()
+name = Sneaky("gi_frame")
+RESULT = type.__getattribute__(gen, name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_type_getattribute_generator_frame_probe>",
+        )
+
+
 def test_object_getattribute_cannot_reach_async_generator_frame_locals():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
