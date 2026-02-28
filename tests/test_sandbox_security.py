@@ -577,6 +577,40 @@ RESULT = getter(func, "__globals__")["__builtins__"]
         )
 
 
+def test_type_getattribute_cannot_reach_import_callable_func_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+method_getter = type(__import__).__getattribute__
+func = method_getter(__import__, "__func__")
+type_getter = type.__getattribute__
+RESULT = type_getter(func, "__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_import_callable_func_globals_probe>",
+        )
+
+
+def test_super_getattribute_cannot_reach_import_callable_func_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+import_getter = super(type(__import__), __import__).__getattribute__
+func = import_getter("__func__")
+func_getter = super(type(func), func).__getattribute__
+RESULT = func_getter("__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_import_callable_func_globals_probe>",
+        )
+
+
 def test_user_function_interpreter_policy_mutation_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
