@@ -6625,6 +6625,93 @@ RESULT = getter("__globals__")["__builtins__"]
         )
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+RESULT = getter("__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_function_code_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+RESULT = getter(name="__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_function_code_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+RESULT = getter(**{"name": "__code__"}).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_key_function_code_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_function_code_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+key = Sneaky("name")
+RESULT = getter(**{key: "__code__"}).co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_function_code_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_importer_self():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
