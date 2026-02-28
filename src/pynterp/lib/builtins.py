@@ -87,6 +87,7 @@ _COMMON_BUILTIN_NAMES = (
     "classmethod",
     "complex",
     "dict",
+    "dir",
     "divmod",
     "enumerate",
     "exit",
@@ -94,6 +95,7 @@ _COMMON_BUILTIN_NAMES = (
     "float",
     "format",
     "frozenset",
+    "globals",
     "hash",
     "hex",
     "id",
@@ -103,6 +105,7 @@ _COMMON_BUILTIN_NAMES = (
     "iter",
     "len",
     "list",
+    "locals",
     "map",
     "max",
     "memoryview",
@@ -128,6 +131,7 @@ _COMMON_BUILTIN_NAMES = (
     "sum",
     "tuple",
     "type",
+    "vars",
     "zip",
 )
 

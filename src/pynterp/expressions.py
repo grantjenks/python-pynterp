@@ -139,6 +139,26 @@ class ExpressionMixin:
     def _maybe_special_builtin_call(
         self, func: Any, args: list[Any], kwargs: Dict[str, Any], scope: RuntimeScope
     ) -> Any:
+        if func is builtins.globals:
+            if args or kwargs:
+                return builtins.globals(*args, **kwargs)
+            return scope.globals
+
+        if func is builtins.locals:
+            if args or kwargs:
+                return builtins.locals(*args, **kwargs)
+            return self._default_exec_eval_locals(scope)
+
+        if func is builtins.vars:
+            if args or kwargs:
+                return builtins.vars(*args, **kwargs)
+            return self._default_exec_eval_locals(scope)
+
+        if func is builtins.dir:
+            if args or kwargs:
+                return builtins.dir(*args, **kwargs)
+            return sorted(self._default_exec_eval_locals(scope))
+
         if func is builtins.eval:
             if not args:
                 return _NO_SPECIAL_CALL
@@ -285,10 +305,6 @@ class ExpressionMixin:
             else:
                 value = self.eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
-        if func is builtins.globals and not args and not kwargs:
-            return scope.globals
-        if func is builtins.locals and not args and not kwargs:
-            return self._default_exec_eval_locals(scope)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
             result = self._adapt_runtime_value(special_value)
@@ -654,10 +670,6 @@ class ExpressionMixin:
             else:
                 value = yield from self.g_eval_expr(kw.value, scope)
                 self._store_keyword(func, kwargs, kw.arg, value)
-        if func is builtins.globals and not args and not kwargs:
-            return scope.globals
-        if func is builtins.locals and not args and not kwargs:
-            return self._default_exec_eval_locals(scope)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
             return special_value

@@ -50,6 +50,10 @@ def test_make_default_env_exposes_expanded_common_builtins():
     assert "chr" in builtins_dict
     assert "ord" in builtins_dict
     assert "pow" in builtins_dict
+    assert "globals" in builtins_dict
+    assert "locals" in builtins_dict
+    assert "vars" in builtins_dict
+    assert "dir" in builtins_dict
     assert "exit" in builtins_dict
     assert "quit" in builtins_dict
     assert "open" not in builtins_dict
@@ -88,3 +92,50 @@ def test_uncaught_exception_is_captured_in_run_result():
     result = interpreter.run('raise Exception(\"foo\")', env=env)
     assert isinstance(result.exception, Exception)
     assert str(result.exception) == "foo"
+
+
+def test_globals_locals_vars_dir_use_interpreter_scope():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+
+    result = interpreter.run(
+        "def snapshot():\n"
+        "    x = 3\n"
+        "    y = 4\n"
+        "    return locals(), vars(), dir()\n"
+        "\n"
+        "globals_ns = globals()\n"
+        "same_globals = globals_ns is globals()\n"
+        "globals_ns['EXPOSED'] = 99\n"
+        "locals_ns, vars_ns, dir_names = snapshot()\n"
+        "RESULT = (same_globals, EXPOSED, locals_ns, vars_ns, dir_names)\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] == (
+        True,
+        99,
+        {"x": 3, "y": 4},
+        {"x": 3, "y": 4},
+        ["x", "y"],
+    )
+
+
+def test_vars_and_dir_with_object_argument_delegate_to_object_introspection():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+
+    result = interpreter.run(
+        "class Box:\n"
+        "    def __init__(self):\n"
+        "        self.value = 5\n"
+        "\n"
+        "def run():\n"
+        "    box = Box()\n"
+        "    return vars(box)['value'], ('value' in dir(box))\n"
+        "\n"
+        "RESULT = run()\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] == (5, True)
