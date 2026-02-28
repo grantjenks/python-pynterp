@@ -348,6 +348,33 @@ RESULT = getter(f, "__globals__")
         interp.run(source, env=env, filename="<type_getattribute_probe>")
 
 
+def test_function_globals_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+RESULT = f.__globals__["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<function_globals_probe>")
+
+
+def test_super_getattribute_cannot_reach_function_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = super(type(f), f).__getattribute__
+RESULT = getter("__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_globals_probe>")
+
+
 def test_super_getattribute_cannot_bypass_attr_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -520,6 +547,33 @@ RESULT = host.allowed_imports
             source,
             env=env,
             filename="<super_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_import_callable_func_globals_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+func = __import__.__func__
+RESULT = func.__globals__["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<import_callable_func_globals_probe>")
+
+
+def test_object_getattribute_cannot_reach_import_callable_func_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+getter = object.__getattribute__
+func = getter(__import__, "__func__")
+RESULT = getter(func, "__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_import_callable_func_globals_probe>",
         )
 
 
