@@ -6656,3 +6656,74 @@ RESULT = getter("__loader__")
             env=env,
             filename="<descriptor_rebound_bound_getattribute_module_loader_probe>",
         )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_function_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def probe():
+    return 1
+
+getter = probe.__getattribute__.__get__(None, type(probe))
+RESULT = getter(name="__globals__")["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_function_globals_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_importer_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.eq_calls = 0
+        return obj
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other):
+        if isinstance(other, str) and other == "name":
+            self.eq_calls += 1
+            return self.eq_calls > 1
+        return str.__eq__(self, other)
+
+getter = __import__.__getattribute__.__get__(None, type(__import__))
+key = Sneaky("name")
+host = getter(**{key: "__self__"})
+RESULT = host.allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_importer_self_probe>",
+        )
+
+
+def test_str_subclass_str_override_positional_name_cannot_bypass_descriptor_rebound_bound_getattribute_module_loader_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_loader"
+
+import math
+
+getter = math.__getattribute__.__get__(None, type(math))
+name = Sneaky("__loader__")
+RESULT = getter(name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_positional_descriptor_rebound_bound_getattribute_module_loader_probe>",
+        )
