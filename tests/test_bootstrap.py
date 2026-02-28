@@ -24,7 +24,7 @@ BOOTSTRAP_RESULT = inner_env["RESULT"]
 """
 
     outer = Interpreter(allowed_imports=None, allow_relative_imports=True)
-    env = outer.make_bootstrap_env(
+    env = outer.make_default_env(
         package_root=Path(__file__).resolve().parents[1] / "src" / "pynterp",
         env={
             "KITCHEN_PATH": str(kitchen_path),

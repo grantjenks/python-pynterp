@@ -1,22 +1,28 @@
-from __future__ import annotations
-
+import argparse
 import sys
 from pathlib import Path
 
 from .main import Interpreter
 
 
-def _usage() -> str:
-    return "usage: python -m pynterp <script.py>"
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m pynterp",
+        usage="python -m pynterp <script.py>",
+    )
+    parser.add_argument("script")
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
-    if not args:
-        print(_usage(), file=sys.stderr)
-        return 2
+    parser = _build_parser()
+    args_list = sys.argv[1:] if argv is None else argv
+    try:
+        args = parser.parse_args(args_list)
+    except SystemExit as exc:
+        return int(exc.code)
 
-    script_path = Path(args[0]).resolve()
+    script_path = Path(args.script).resolve()
     if not script_path.is_file():
         print(f"pynterp: script not found: {script_path}", file=sys.stderr)
         return 2

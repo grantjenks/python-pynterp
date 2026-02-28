@@ -7,7 +7,7 @@ from pynterp import Interpreter
 
 def test_zero_arg_super_and___class___closure():
     interpreter = Interpreter(allow_relative_imports=True)
-    env = interpreter.make_bootstrap_env(
+    env = interpreter.make_default_env(
         package_root=Path(__file__).resolve().parents[1] / "src" / "pynterp"
     )
 

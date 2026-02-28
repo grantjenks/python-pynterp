@@ -19,7 +19,7 @@ The project is focused on:
 
 2. Single runtime policy.
 - There is no separate permissive bootstrap mode.
-- `make_bootstrap_env(...)` is a compatibility alias to the same hardened policy used by `make_default_env(...)`.
+- Use `make_default_env(...)` for both regular execution and bootstrap/self-hosting scenarios.
 
 3. In-process hardening for untrusted code (best effort, not OS isolation).
 - Guarded attribute access blocks reflection pivots used for escapes (`__mro__`, `__subclasses__`, frame globals, etc.).

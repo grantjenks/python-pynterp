@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 from types import ModuleType
@@ -96,22 +94,6 @@ class InterpreterCore:
         if loader is not None:
             out.setdefault("__module_loader__", loader)
         return out
-
-    def make_bootstrap_env(
-        self,
-        *,
-        package_root: str | Path,
-        package_name: str = "pynterp",
-        env: Optional[dict] = None,
-        name: str = "__main__",
-    ) -> dict:
-        # Compat alias: bootstrap and default now share one policy.
-        return self.make_default_env(
-            env=env,
-            name=name,
-            package_root=package_root,
-            package_name=package_name,
-        )
 
     # ----- run -----
 

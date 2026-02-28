@@ -12,8 +12,8 @@ import inspect
 import math
 import operator
 import pathlib
-import sys
 import symtable
+import sys
 import types
 import typing
 import weakref

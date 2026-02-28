@@ -1,8 +1,13 @@
-from __future__ import annotations
+"""Runtime compatibility shims for stdlib modules interacting with UserFunction.
+
+These patches adapt host-library entry points so interpreted functions behave like
+regular Python callables in async helpers, unittest discovery, subinterpreters,
+and interpreter worker pools.
+"""
 
 import functools
-import inspect
 import importlib
+import inspect
 import sys
 import types
 from types import ModuleType
@@ -138,8 +143,9 @@ def _resolve_unittest_name_target(name: Any, module: Any) -> tuple[Any, Any, str
 
 
 def _suite_for_user_function_test_method(loader: Any, name: Any, module: Any) -> Any | None:
-    from pynterp.functions import UserFunction
     import unittest.case as unittest_case
+
+    from pynterp.functions import UserFunction
 
     resolved = _resolve_unittest_name_target(name, module)
     if resolved is None:

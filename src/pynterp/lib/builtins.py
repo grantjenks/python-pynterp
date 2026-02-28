@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import builtins
 from typing import Any, Callable
 
@@ -18,6 +16,7 @@ _COMMON_BUILTIN_NAMES = (
     "UnboundLocalError",
     "ValueError",
     "ZeroDivisionError",
+    "abs",
     "all",
     "any",
     "bool",
@@ -66,11 +65,6 @@ def make_safe_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
     return out
 
 
-def make_bootstrap_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
-    """Compat alias for callers; bootstrap and default now share one policy."""
-    return make_safe_builtins(importer)
-
-
 def make_safe_env(
     importer: Callable[..., Any], *, env: dict[str, Any] | None = None, name: str = "__main__"
 ) -> dict[str, Any]:
@@ -79,10 +73,3 @@ def make_safe_env(
     out.setdefault("__builtins__", make_safe_builtins(importer))
     out.setdefault("__name__", name)
     return out
-
-
-def make_bootstrap_env(
-    importer: Callable[..., Any], *, env: dict[str, Any] | None = None, name: str = "__main__"
-) -> dict[str, Any]:
-    """Compat alias for callers; bootstrap and default now share one policy."""
-    return make_safe_env(importer, env=env, name=name)
