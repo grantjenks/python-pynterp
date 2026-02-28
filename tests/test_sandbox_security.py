@@ -2218,6 +2218,84 @@ finally:
         )
 
 
+def test_bound_getattribute_keyword_name_cannot_reach_async_generator_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+getter = frame.__getattribute__
+RESULT = getter(name="f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_keyword_async_generator_frame_globals_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_async_generator_frame_builtins_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+name = Sneaky("f_builtins")
+getter = frame.__getattribute__
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_bound_getattribute_async_generator_frame_builtins_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_bound_getattribute_async_generator_frame_locals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+name = Sneaky("f_locals")
+getter = frame.__getattribute__
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_bound_getattribute_async_generator_frame_locals_probe>",
+        )
+
+
 def test_function_closure_cell_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
