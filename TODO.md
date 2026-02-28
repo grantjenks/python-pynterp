@@ -307,6 +307,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 464 -> 467 (+3). Validation gates this iteration: `3 passed` with `464 deselected` (targeted descriptor-rebound importer-self dispatch slice), `467 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 134): expanded descriptor-rebound bound-`__getattribute__` builtin-`__self__` regressions with missing keyword-dispatch coverage, adding direct `name=...` and `**{"name": ...}` probes plus a hostile stateful `str`-subclass keyword-key bypass attempt.
 - Metrics: `tests/test_sandbox_security.py` cases 467 -> 470 (+3). Validation gates this iteration: `5 passed` with `465 deselected` (targeted descriptor-rebound builtin-self keyword slice), `470 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 135): expanded descriptor-rebound bound-`__getattribute__` builtin-`__self__` regressions with missing hostile positional-name coverage (stateful `str` subclass plus `str.__str__` override) and the complementary `str.__str__`-override keyword-key probe.
+- Metrics: `tests/test_sandbox_security.py` cases 470 -> 473 (+3). Validation gates this iteration: `3 passed` with `470 deselected` (targeted descriptor-rebound builtin-self positional/keyword-key slice), `473 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
