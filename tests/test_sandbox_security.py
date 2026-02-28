@@ -67,6 +67,66 @@ RESULT = frame.f_globals["__builtins__"]
         interp.run(source, env=env, filename="<traceback_frame_probe>")
 
 
+def test_traceback_tb_next_frame_locals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    tb = exc.__traceback__
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+RESULT = tb.tb_frame.f_locals["__builtins__"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<traceback_tb_next_frame_locals_probe>")
+
+
+def test_object_getattribute_cannot_reach_traceback_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+try:
+    1 / 0
+except Exception as exc:
+    tb = exc.__traceback__
+
+getter = object.__getattribute__
+RESULT = getter(tb.tb_frame, "f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_traceback_frame_globals_probe>",
+        )
+
+
+def test_coroutine_frame_locals_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def compute():
+    return 1
+
+co = compute()
+try:
+    frame = co.cr_frame
+    RESULT = frame.f_locals["__builtins__"]
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<coroutine_frame_locals_probe>")
+
+
 def test_object_getattribute_cannot_bypass_attr_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
