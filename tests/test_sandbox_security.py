@@ -11324,6 +11324,28 @@ RESULT = getter(name=name)
         )
 
 
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_module_type_bound_getattribute_module_dict_guard():
+    interp = Interpreter(allowed_imports={"math"})
+    env = interp.make_default_env()
+    source = """
+import math
+
+class Sneaky(str):
+    def __str__(self):
+        return "not_dict"
+
+getter = type(math).__getattribute__.__get__(math, type(math))
+name = Sneaky("__dict__")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
+        )
+
+
 def test_str_subclass_str_override_keyword_key_cannot_bypass_descriptor_rebound_module_type_bound_getattribute_module_dict_guard():
     interp = Interpreter(allowed_imports={"math"})
     env = interp.make_default_env()
