@@ -253,6 +253,8 @@ Build `pynterp` into a secure in-process sandbox for untrusted code, assuming th
 - Metrics: `tests/test_sandbox_security.py` cases 362 -> 366 (+4). Validation gates this iteration: `4 passed` with `362 deselected` (targeted sandbox slice), `366 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 - Progress (2026-02-28, iteration 107): added descriptor-rebound module-`__dict__` regressions for direct access plus hostile keyword-name and keyword-key dispatch (`str`-subclass stateful equality and `str.__str__` override) to keep module-dict import-metadata pivots blocked.
 - Metrics: `tests/test_sandbox_security.py` cases 366 -> 369 (+3). Validation gates this iteration: `3 passed` with `366 deselected` (targeted sandbox slice), `369 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
+- Progress (2026-02-28, iteration 108): expanded descriptor-rebound module-`__dict__` regressions with hostile positional-name and complementary keyword dispatch coverage, adding both stateful `str`-subclass and `str.__str__`-override probes to keep module-dict pivots blocked.
+- Metrics: `tests/test_sandbox_security.py` cases 369 -> 373 (+4). Validation gates this iteration: `6 passed` with `367 deselected` (targeted module-dict descriptor-rebound slice), `373 passed` (sandbox security), `4 passed` (env strict), `15 passed` with `131 deselected` (core semantics filtered gate).
 
 2. Lock down object graph pivots.
 - Review and tighten blocked attrs and special-case aliases in `src/pynterp/lib/guards.py`.
