@@ -6927,6 +6927,51 @@ finally:
         )
 
 
+def test_descriptor_rebound_bound_getattribute_cannot_reach_async_generator_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+RESULT = getter("f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_async_generator_frame_locals_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_locals"
+
+async def produce():
+    yield 1
+
+ag = produce()
+frame = ag.ag_frame
+getter = frame.__getattribute__.__get__(None, type(frame))
+name = Sneaky("f_locals")
+RESULT = getter(name=name)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
+        )
+
+
 def test_stateful_str_subclass_keyword_key_cannot_bypass_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_guard():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
