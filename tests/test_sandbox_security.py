@@ -753,6 +753,89 @@ RESULT = host.allowed_imports
         )
 
 
+def test_stateful_str_subclass_cannot_bypass_getattr_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+name = Sneaky("__self__")
+RESULT = getattr(__import__, name).allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_getattr_import_callable_self_probe>",
+        )
+
+
+def test_stateful_str_subclass_cannot_bypass_object_getattribute_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = object.__getattribute__
+name = Sneaky("__self__")
+RESULT = getter(__import__, name).allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_object_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_stateful_str_subclass_cannot_bypass_super_getattribute_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+getter = super(type(__import__), __import__).__getattribute__
+name = Sneaky("__self__")
+RESULT = getter(name).allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_super_getattribute_import_callable_self_probe>",
+        )
+
+
 def test_import_callable_func_globals_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
