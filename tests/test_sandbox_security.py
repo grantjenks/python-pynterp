@@ -366,6 +366,61 @@ RESULT = getter("__dict__")
         interp.run(source, env=env, filename="<super_getattribute_probe>")
 
 
+def test_function_code_object_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+RESULT = f.__code__.co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<function_code_probe>")
+
+
+def test_object_getattribute_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = object.__getattribute__
+RESULT = getter(f, "__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_code_probe>")
+
+
+def test_type_getattribute_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = type.__getattribute__
+RESULT = getter(f, "__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_code_probe>")
+
+
+def test_super_getattribute_cannot_reach_function_code_object():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def f():
+    return 1
+
+getter = super(type(f), f).__getattribute__
+RESULT = getter("__code__").co_consts
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_code_probe>")
+
+
 def test_builtin_callable_self_module_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
