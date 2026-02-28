@@ -4153,6 +4153,167 @@ RESULT = cells[0].cell_contents
         )
 
 
+def test_bound_getattribute_cannot_reach_function_closure_cells():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = fn.__getattribute__
+cells = getter("__closure__")
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<bound_getattribute_closure_cell_probe>",
+        )
+
+
+def test_stateful_str_subclass_positional_name_cannot_bypass_bound_getattribute_function_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = fn.__getattribute__
+name = Sneaky("__closure__")
+cells = getter(name)
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_positional_bound_getattribute_closure_probe>",
+        )
+
+
+def test_str_subclass_str_override_positional_name_cannot_bypass_bound_getattribute_function_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = fn.__getattribute__
+name = Sneaky("__closure__")
+cells = getter(name)
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_positional_bound_getattribute_closure_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_function_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = fn.__getattribute__
+name = Sneaky("__closure__")
+cells = getter(name=name)
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_bound_getattribute_closure_probe>",
+        )
+
+
+def test_str_subclass_str_override_keyword_key_cannot_bypass_bound_getattribute_function_closure_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_name"
+
+def outer():
+    sentinel = 42
+
+    def inner():
+        return sentinel
+
+    return inner
+
+fn = outer()
+getter = fn.__getattribute__
+key = Sneaky("name")
+cells = getter(**{key: "__closure__"})
+RESULT = cells[0].cell_contents
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_keyword_key_bound_getattribute_closure_probe>",
+        )
+
+
 def test_reduction_hook_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
