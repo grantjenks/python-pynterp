@@ -836,6 +836,46 @@ RESULT = getter(name).allowed_imports
         )
 
 
+def test_str_subclass_str_override_cannot_bypass_type_getattribute_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+getter = type(__import__).__getattribute__
+name = Sneaky("__self__")
+RESULT = getter(__import__, name).allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_type_getattribute_import_callable_self_probe>",
+        )
+
+
+def test_str_subclass_str_override_cannot_bypass_super_getattribute_import_callable_self_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __str__(self):
+        return "not_blocked"
+
+getter = super(type(__import__), __import__).__getattribute__
+name = Sneaky("__self__")
+RESULT = getter(name).allowed_imports
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<str_override_super_getattribute_import_callable_self_probe>",
+        )
+
+
 def test_import_callable_func_globals_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()

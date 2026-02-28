@@ -129,6 +129,8 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
         def guarded_getattribute(*args: Any, **kwargs: Any) -> Any:
             target = _MISSING
             attr_name = kwargs.get("name", _MISSING)
+            call_args = args
+            call_kwargs = kwargs
             if raw_is_bound:
                 target = getattr(raw_getattribute, "__self__", _MISSING)
                 if attr_name is _MISSING and args:
@@ -141,6 +143,13 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
 
             if attr_name is not _MISSING:
                 attr_name = guard_attr_name(attr_name)
+                if "name" in kwargs:
+                    call_kwargs = dict(kwargs)
+                    call_kwargs["name"] = attr_name
+                elif raw_is_bound and args:
+                    call_args = (attr_name,) + args[1:]
+                elif not raw_is_bound and len(args) > 1:
+                    call_args = (args[0], attr_name) + args[2:]
 
             if use_object_fallback and target is not _MISSING and attr_name is not _MISSING:
                 resolved = inspect.getattr_static(target, attr_name)
@@ -149,7 +158,7 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
                     return resolved
                 return descriptor_get(resolved, target, type(target))
 
-            return raw_getattribute(*args, **kwargs)
+            return raw_getattribute(*call_args, **call_kwargs)
 
         return guarded_getattribute
 
