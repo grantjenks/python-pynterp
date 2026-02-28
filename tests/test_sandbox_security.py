@@ -776,6 +776,104 @@ RESULT = getter(**{key: "__getattr__"})("marker")
         )
 
 
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_setattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+name = Sneaky("__setattr__")
+RESULT = getter(name=name)("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_setattr_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_delattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = target.__getattribute__.__get__(None, type(target))
+name = Sneaky("__delattr__")
+RESULT = getter(name=name)("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_delattr_probe>",
+        )
+
+
+def test_stateful_str_subclass_keyword_name_cannot_bypass_descriptor_rebound_bound_getattribute_dunder_getattr_guard():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Sneaky(str):
+    def __new__(cls, value):
+        obj = str.__new__(cls, value)
+        obj.calls = 0
+        return obj
+
+    def __hash__(self):
+        self.calls += 1
+        if self.calls <= 1:
+            return 0
+        return str.__hash__(self)
+
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+name = Sneaky("__getattr__")
+RESULT = getter(name=name)("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_dunder_getattr_probe>",
+        )
+
+
 def test_function_code_object_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
