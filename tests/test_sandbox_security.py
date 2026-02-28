@@ -53,6 +53,50 @@ RESULT = frame.f_globals["__builtins__"]
         interp.run(source, env=env, filename="<async_frame_probe>")
 
 
+def test_type_getattribute_cannot_reach_coroutine_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def compute():
+    return 1
+
+co = compute()
+try:
+    frame = co.cr_frame
+    getter = type.__getattribute__
+    RESULT = getter(frame, "f_globals")
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_coroutine_frame_globals_probe>",
+        )
+
+
+def test_super_getattribute_cannot_reach_async_generator_frame_locals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def produce():
+    yield 1
+
+ag = produce()
+ag_getter = super(type(ag), ag).__getattribute__
+frame = ag_getter("ag_frame")
+frame_getter = super(type(frame), frame).__getattribute__
+RESULT = frame_getter("f_locals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<super_getattribute_async_generator_frame_locals_probe>",
+        )
+
+
 def test_traceback_frame_globals_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -65,6 +109,54 @@ RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
         interp.run(source, env=env, filename="<traceback_frame_probe>")
+
+
+def test_type_getattribute_cannot_reach_traceback_frame_globals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+try:
+    1 / 0
+except Exception as exc:
+    tb = exc.__traceback__
+    frame = tb.tb_frame
+getter = type.__getattribute__
+RESULT = getter(frame, "f_globals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_traceback_frame_globals_probe>",
+        )
+
+
+def test_type_getattribute_tb_next_chain_cannot_reach_frame_locals():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+def boom():
+    1 / 0
+
+def run():
+    boom()
+
+try:
+    run()
+except Exception as exc:
+    tb = exc.__traceback__
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    frame = tb.tb_frame
+getter = type.__getattribute__
+RESULT = getter(frame, "f_locals")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<type_getattribute_tb_next_chain_frame_locals_probe>",
+        )
 
 
 def test_traceback_frame_builtins_escape_is_blocked():
