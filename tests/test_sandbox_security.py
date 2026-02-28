@@ -615,6 +615,45 @@ RESULT = getter("__setattr__")("marker", 1)
         )
 
 
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(name="__setattr__")("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_setattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+key = "name"
+RESULT = getter(**{key: "__setattr__"})("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_key_setattr_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_delattr_dunder_mutator():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -635,6 +674,47 @@ RESULT = getter("__delattr__")("marker")
         )
 
 
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(name="__delattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_delattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = target.__getattribute__.__get__(None, type(target))
+key = "name"
+RESULT = getter(**{key: "__delattr__"})("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_key_delattr_probe>",
+        )
+
+
 def test_descriptor_rebound_bound_getattribute_cannot_reach_dunder_getattr():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -652,6 +732,47 @@ RESULT = getter("__getattr__")("marker")
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_dunder_getattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_name_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+RESULT = getter(name="__getattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_dunder_getattr_probe>",
+        )
+
+
+def test_descriptor_rebound_bound_getattribute_keyword_key_cannot_reach_dunder_getattr():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    def __getattr__(self, name):
+        return name
+
+target = Probe()
+getter = target.__getattribute__.__get__(None, type(target))
+key = "name"
+RESULT = getter(**{key: "__getattr__"})("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<descriptor_rebound_bound_getattribute_keyword_key_dunder_getattr_probe>",
         )
 
 
