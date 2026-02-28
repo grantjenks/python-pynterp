@@ -67,6 +67,20 @@ RESULT = frame.f_globals["__builtins__"]
         interp.run(source, env=env, filename="<traceback_frame_probe>")
 
 
+def test_traceback_frame_builtins_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+try:
+    1 / 0
+except Exception as exc:
+    frame = exc.__traceback__.tb_frame
+RESULT = frame.f_builtins["open"]
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<traceback_frame_builtins_probe>")
+
+
 def test_traceback_tb_next_frame_locals_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -106,6 +120,26 @@ RESULT = getter(tb.tb_frame, "f_globals")
             source,
             env=env,
             filename="<object_getattribute_traceback_frame_globals_probe>",
+        )
+
+
+def test_object_getattribute_cannot_reach_traceback_frame_builtins():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+try:
+    1 / 0
+except Exception as exc:
+    tb = exc.__traceback__
+
+getter = object.__getattribute__
+RESULT = getter(tb.tb_frame, "f_builtins")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_traceback_frame_builtins_probe>",
         )
 
 
@@ -425,6 +459,29 @@ finally:
             source,
             env=env,
             filename="<object_getattribute_coroutine_frame_globals_probe>",
+        )
+
+
+def test_object_getattribute_cannot_reach_coroutine_frame_builtins():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+async def compute():
+    return 1
+
+co = compute()
+try:
+    getter = object.__getattribute__
+    frame = getter(co, "cr_frame")
+    RESULT = getter(frame, "f_builtins")
+finally:
+    co.close()
+"""
+    with pytest.raises(AttributeError):
+        interp.run(
+            source,
+            env=env,
+            filename="<object_getattribute_coroutine_frame_builtins_probe>",
         )
 
 
