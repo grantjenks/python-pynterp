@@ -393,6 +393,128 @@ RESULT = getter("__dict__")
         interp.run(source, env=env, filename="<super_getattribute_probe>")
 
 
+def test_setattr_dunder_mutator_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+RESULT = target.__setattr__("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<setattr_dunder_probe>")
+
+
+def test_object_getattribute_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = object.__getattribute__
+RESULT = getter(target, "__setattr__")("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_setattr_probe>")
+
+
+def test_type_getattribute_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = type.__getattribute__
+RESULT = getter(target, "__setattr__")("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_setattr_probe>")
+
+
+def test_super_getattribute_cannot_reach_setattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+getter = super(type(target), target).__getattribute__
+RESULT = getter("__setattr__")("marker", 1)
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_setattr_probe>")
+
+
+def test_delattr_dunder_mutator_escape_chain_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+RESULT = target.__delattr__("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<delattr_dunder_probe>")
+
+
+def test_object_getattribute_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = object.__getattribute__
+RESULT = getter(target, "__delattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<object_getattribute_delattr_probe>")
+
+
+def test_type_getattribute_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = type.__getattribute__
+RESULT = getter(target, "__delattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<type_getattribute_delattr_probe>")
+
+
+def test_super_getattribute_cannot_reach_delattr_dunder_mutator():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    source = """
+class Probe:
+    pass
+
+target = Probe()
+target.marker = 1
+getter = super(type(target), target).__getattribute__
+RESULT = getter("__delattr__")("marker")
+"""
+    with pytest.raises(AttributeError):
+        interp.run(source, env=env, filename="<super_getattribute_delattr_probe>")
+
+
 def test_function_code_object_escape_chain_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
