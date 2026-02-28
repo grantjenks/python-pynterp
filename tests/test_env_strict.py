@@ -14,23 +14,25 @@ def test_run_requires_explicit_env_dict():
 def test_run_does_not_auto_insert_builtins_or_name():
     interpreter = Interpreter()
     env: dict = {}
-    interpreter.run("RESULT = 1", env=env)
+    result = interpreter.run("RESULT = 1", env=env)
+    assert result.ok
     assert env == {"RESULT": 1}
 
 
 def test_empty_env_has_no_builtins():
     interpreter = Interpreter()
-    with pytest.raises(NameError):
-        interpreter.run("RESULT = len([1, 2, 3])", env={})
+    result = interpreter.run("RESULT = len([1, 2, 3])", env={})
+    assert isinstance(result.exception, NameError)
 
 
 def test_make_default_env_provides_explicit_safe_defaults():
     interpreter = Interpreter(allowed_imports={"math"})
     env = interpreter.make_default_env()
-    interpreter.run(
+    result = interpreter.run(
         "import math\nRESULT = (len(range(3)), round(math.sqrt(81)))",
         env=env,
     )
+    assert result.ok
     assert env["RESULT"] == (3, 9)
 
 
@@ -49,3 +51,38 @@ def test_make_default_env_exposes_expanded_common_builtins():
     assert "ord" in builtins_dict
     assert "pow" in builtins_dict
     assert "open" not in builtins_dict
+
+
+def test_uncaught_system_exit_is_captured():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+
+    result = interpreter.run("raise SystemExit(7)", env=env)
+    assert isinstance(result.exception, SystemExit)
+    assert result.exception.code == 7
+
+
+def test_builtins_exit_or_sys_exit_are_captured():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+
+    result = interpreter.run(
+        "import builtins\n"
+        "import sys\n"
+        "if hasattr(builtins, 'exit'):\n"
+        "    builtins.exit(9)\n"
+        "else:\n"
+        "    sys.exit(9)\n",
+        env=env,
+    )
+    assert isinstance(result.exception, SystemExit)
+    assert result.exception.code == 9
+
+
+def test_uncaught_exception_is_captured_in_run_result():
+    interpreter = Interpreter()
+    env = interpreter.make_default_env()
+
+    result = interpreter.run('raise Exception(\"foo\")', env=env)
+    assert isinstance(result.exception, Exception)
+    assert str(result.exception) == "foo"

@@ -1,5 +1,6 @@
 import argparse
 import sys
+import traceback
 from pathlib import Path
 
 from .main import Interpreter
@@ -36,7 +37,19 @@ def main(argv: list[str] | None = None) -> int:
         },
         name="__main__",
     )
-    interpreter.run(source, env=env, filename=str(script_path))
+    result = interpreter.run(source, env=env, filename=str(script_path))
+    if result.exception is not None:
+        exc = result.exception
+        if isinstance(exc, SystemExit):
+            code = exc.code
+            if code is None:
+                return 0
+            if isinstance(code, int):
+                return code
+            print(code, file=sys.stderr)
+            return 1
+        traceback.print_exception(exc, file=sys.stderr)
+        return 1
     return 0
 
 

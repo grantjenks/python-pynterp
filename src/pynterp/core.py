@@ -1,4 +1,5 @@
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterator, Optional, Set
@@ -12,6 +13,20 @@ from pynterp.lib.compat import maybe_patch_runtime_module
 
 from .code import ModuleCode
 from .scopes import ModuleScope, RuntimeScope
+
+
+@dataclass(slots=True)
+class RunResult:
+    globals: dict[str, Any]
+    exception: BaseException | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.exception is None
+
+    def raise_for_exception(self) -> None:
+        if self.exception is not None:
+            raise self.exception
 
 
 class InterpreterCore:
@@ -97,11 +112,11 @@ class InterpreterCore:
 
     # ----- run -----
 
-    def run(self, source: str, env: dict, filename: str = "<pynterp>") -> dict:
+    def run(self, source: str, env: dict, filename: str = "<pynterp>") -> RunResult:
         """
         Execute `source` in a fresh AST interpreter module environment.
 
-        Returns the module globals dict.
+        Returns a RunResult with globals and any uncaught exception.
         """
         if not isinstance(env, dict):
             raise TypeError("env must be dict")
@@ -117,11 +132,18 @@ class InterpreterCore:
         else:
             raise TypeError("__builtins__ must be dict, module, or None")
 
-        code = ModuleCode(source, filename)
-        scope = ModuleScope(code, globals_dict, builtins_dict)
+        try:
+            code = ModuleCode(source, filename)
+            scope = ModuleScope(code, globals_dict, builtins_dict)
+            self.exec_module(code.tree, scope)
+        except BaseException as exc:
+            return RunResult(globals=globals_dict, exception=exc)
+        return RunResult(globals=globals_dict)
 
-        self.exec_module(code.tree, scope)
-        return globals_dict
+    def run_or_raise(self, source: str, env: dict, filename: str = "<pynterp>") -> dict:
+        result = self.run(source, env, filename)
+        result.raise_for_exception()
+        return result.globals
 
     # ----- dispatch (normal) -----
 

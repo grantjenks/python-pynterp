@@ -19,7 +19,8 @@ def run_interpreter():
     def _run(source: str, *, allowed_imports=None, env=None, filename: str = "<test>"):
         interpreter = Interpreter(allowed_imports=allowed_imports)
         globals_dict = interpreter.make_default_env(env=env)
-        interpreter.run(source, env=globals_dict, filename=filename)
-        return globals_dict
+        result = interpreter.run(source, env=globals_dict, filename=filename)
+        result.raise_for_exception()
+        return result.globals
 
     return _run

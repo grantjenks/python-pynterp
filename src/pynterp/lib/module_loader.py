@@ -124,8 +124,8 @@ class InterpretedModuleLoader:
 
         try:
             source = module_path.read_text()
-            self.interpreter.run(source, env=module_dict, filename=str(module_path))
-        except Exception:
+            self.interpreter.run_or_raise(source, env=module_dict, filename=str(module_path))
+        except BaseException:
             self.modules.pop(module_name, None)
             raise
 
