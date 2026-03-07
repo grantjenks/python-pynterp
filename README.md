@@ -29,6 +29,36 @@
 Hello, World!
 ```
 
+## Capture the Flag
+
+The live challenge is at [pynterp.gmj.dev](https://pynterp.gmj.dev).
+
+Goal: recover the flag from `/challenge/flag.txt`.
+
+The service exposes a single execution endpoint:
+
+```bash
+curl -X POST https://pynterp.gmj.dev/run \
+  -H 'content-type: application/json' \
+  -d '{"code":"print(1 + 2)"}'
+```
+
+That kind of pure-Python execution works. Simple arithmetic, control flow, functions, and other supported `pynterp` language features are fair game.
+
+What does not work naively:
+
+```bash
+curl -X POST https://pynterp.gmj.dev/run \
+  -H 'content-type: application/json' \
+  -d '{"code":"print(open(\"/challenge/flag.txt\").read())"}'
+```
+
+The interpreter runs with restricted builtins and `allowed_imports=set()`, so straightforward file access and normal imports are blocked.
+You can inspect the challenge setup under [`www/`](./www/).
+
+If you solve the challenge, the thing to capture is the full flag value returned from the target, not just proof of code execution.
+If you capture the flag, message me the flag contents at contact at grantjenks dot com.
+
 ## What is implemented
 
 ### Core execution model
