@@ -365,7 +365,9 @@ RESULT = create_nested_fstring(160)
     assert env["RESULT"].startswith('f"{')
 
 
-def test_module_code_handles_symtable_keyword_incompatibility(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_module_code_handles_symtable_keyword_incompatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from pynterp import code as code_mod
 
     called = False
@@ -1945,9 +1947,7 @@ try:
 except* ExceptionGroup:
     pass
     """
-    with pytest.raises(
-        TypeError, match=r"catching ExceptionGroup with except\* is not allowed"
-    ):
+    with pytest.raises(TypeError, match=r"catching ExceptionGroup with except\* is not allowed"):
         run_interpreter(source)
 
 
@@ -2845,6 +2845,8 @@ finally:
 
 def test_interpreters_run_func_lambda_preserves_shared_encoding_errors():
     pytest.importorskip("_interpreters")
+    if sys.version_info[:2] == (3, 13):
+        pytest.skip("CPython 3.13 _interpreters.run_func segfaults on invalid shared dict keys")
     source = """
 import _interpreters
 interp = _interpreters.create()

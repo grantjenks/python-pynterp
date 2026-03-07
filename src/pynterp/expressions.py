@@ -57,7 +57,10 @@ class ExpressionMixin:
         if TemplateInterpolation is None:
             raise NotImplementedError("TemplateStr is not supported on this Python runtime")
         return TemplateInterpolation(
-            value, expression if expression is not None else "", self._template_conversion(conversion), format_spec
+            value,
+            expression if expression is not None else "",
+            self._template_conversion(conversion),
+            format_spec,
         )
 
     def _callable_name(self, func: Any) -> str:
@@ -164,7 +167,9 @@ class ExpressionMixin:
                 return _NO_SPECIAL_CALL
             eval_source = self._compile_exec_eval_source(args[0], "eval")
             if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
-                return builtins.eval(eval_source, scope.globals, self._default_exec_eval_locals(scope))
+                return builtins.eval(
+                    eval_source, scope.globals, self._default_exec_eval_locals(scope)
+                )
             if eval_source is not args[0]:
                 return builtins.eval(eval_source, *args[1:], **kwargs)
             return _NO_SPECIAL_CALL
@@ -399,7 +404,9 @@ class ExpressionMixin:
 
     def eval_Interpolation(self, node: ast.AST, scope: RuntimeScope) -> Any:
         value = self.eval_expr(node.value, scope)
-        format_spec = "" if node.format_spec is None else str(self.eval_expr(node.format_spec, scope))
+        format_spec = (
+            "" if node.format_spec is None else str(self.eval_expr(node.format_spec, scope))
+        )
         return self._build_template_interpolation(
             value,
             getattr(node, "str", ""),
@@ -763,7 +770,9 @@ class ExpressionMixin:
     def g_eval_Interpolation(self, node: ast.AST, scope: RuntimeScope) -> Iterator[Any]:
         value = yield from self.g_eval_expr(node.value, scope)
         format_spec = (
-            "" if node.format_spec is None else str((yield from self.g_eval_expr(node.format_spec, scope)))
+            ""
+            if node.format_spec is None
+            else str((yield from self.g_eval_expr(node.format_spec, scope)))
         )
         return self._build_template_interpolation(
             value,
@@ -944,9 +953,7 @@ class ExpressionMixin:
                     return True
         return False
 
-    def g_eval_GeneratorExp(
-        self, node: ast.GeneratorExp, scope: RuntimeScope
-    ) -> Iterator[Any]:
+    def g_eval_GeneratorExp(self, node: ast.GeneratorExp, scope: RuntimeScope) -> Iterator[Any]:
         locals_set = _collect_comprehension_locals(node.generators)
         gens = node.generators
         has_async = self._generator_exp_requires_async_iterator(node)
@@ -957,7 +964,11 @@ class ExpressionMixin:
 
             def make_async_gen() -> Iterator[Any]:
                 comp_scope = ComprehensionScope(
-                    scope.code, scope.globals, scope.builtins, outer_scope=scope, local_names=locals_set
+                    scope.code,
+                    scope.globals,
+                    scope.builtins,
+                    outer_scope=scope,
+                    local_names=locals_set,
                 )
 
                 def rec(i: int) -> Iterator[Any]:

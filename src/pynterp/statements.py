@@ -47,9 +47,7 @@ class _TypeAliasEvalScope(RuntimeScope):
         )
         self._base_scope = base_scope
         self._type_param_bindings = type_param_bindings
-        self._type_param_cells = {
-            name: Cell(value) for name, value in type_param_bindings.items()
-        }
+        self._type_param_cells = {name: Cell(value) for name, value in type_param_bindings.items()}
 
     def load(self, name: str) -> Any:
         type_param_cell = self._type_param_cells.get(name)
@@ -115,9 +113,7 @@ class StatementMixin:
             return name
         return f"_{owner}{name}"
 
-    def _type_param_binding_names(
-        self, name: str, *, private_owner: str | None
-    ) -> tuple[str, ...]:
+    def _type_param_binding_names(self, name: str, *, private_owner: str | None) -> tuple[str, ...]:
         names = [name]
         mangled_name = self._mangle_private_name_for_owner(name, private_owner)
         if mangled_name != name:
@@ -166,16 +162,16 @@ class StatementMixin:
             return self._typing_runtime_call(scope, py_typing.TypeVarTuple, node.name)
         raise NotImplementedError(f"Type parameter not supported: {node.__class__.__name__}")
 
-    def _eval_type_param_default(
-        self, node: ast.expr, scope: RuntimeScope
-    ) -> Any:
+    def _eval_type_param_default(self, node: ast.expr, scope: RuntimeScope) -> Any:
         if isinstance(node, ast.Starred):
             # Match compiler semantics for type-parameter defaults like `*Ts = *default`.
             (value,) = self.eval_expr(node.value, scope)
             return value
         return self.eval_expr(node, scope)
 
-    def _typing_runtime_call(self, scope: RuntimeScope, factory: Any, /, *args: Any, **kwargs: Any) -> Any:
+    def _typing_runtime_call(
+        self, scope: RuntimeScope, factory: Any, /, *args: Any, **kwargs: Any
+    ) -> Any:
         # Run typing factories under interpreted globals so `__module__` matches the interpreted module.
         return eval(
             "__pynterp_factory(*__pynterp_args, **__pynterp_kwargs)",
@@ -187,7 +183,9 @@ class StatementMixin:
             },
         )
 
-    def _eval_class_bases(self, base_nodes: Sequence[ast.expr], scope: RuntimeScope) -> tuple[Any, ...]:
+    def _eval_class_bases(
+        self, base_nodes: Sequence[ast.expr], scope: RuntimeScope
+    ) -> tuple[Any, ...]:
         bases: list[Any] = []
         for base_node in base_nodes:
             if isinstance(base_node, ast.Starred):
@@ -256,6 +254,7 @@ class StatementMixin:
         eval_scope = _TypeAliasEvalScope(scope, eval_bindings)
 
         if isinstance(node, ast.TypeVar):
+
             def build_lazy_typevar(
                 *,
                 bound_evaluator: Any = _MISSING,
@@ -855,8 +854,7 @@ class StatementMixin:
     def _async_for_next_awaitable(self, iterator: Any) -> tuple[Any, Any, str]:
         next_value = iterator.__anext__()
         message = (
-            "'async for' received an invalid object from __anext__: "
-            f"{type(next_value).__name__}"
+            f"'async for' received an invalid object from __anext__: {type(next_value).__name__}"
         )
 
         await_method = getattr(next_value, "__await__", None)
@@ -1802,9 +1800,7 @@ class StatementMixin:
 
         except ControlFlowSignal:
             for exit_ in reversed(exits):
-                yield AwaitRequest(
-                    self._async_with_awaitable(exit_(None, None, None), "__aexit__")
-                )
+                yield AwaitRequest(self._async_with_awaitable(exit_(None, None, None), "__aexit__"))
             raise
 
         except BaseException as e:
@@ -1831,9 +1827,7 @@ class StatementMixin:
 
         else:
             for exit_ in reversed(exits):
-                yield AwaitRequest(
-                    self._async_with_awaitable(exit_(None, None, None), "__aexit__")
-                )
+                yield AwaitRequest(self._async_with_awaitable(exit_(None, None, None), "__aexit__"))
 
         return
 

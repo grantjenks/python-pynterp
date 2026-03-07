@@ -89,7 +89,7 @@ def test_uncaught_exception_is_captured_in_run_result():
     interpreter = Interpreter()
     env = interpreter.make_default_env()
 
-    result = interpreter.run('raise Exception(\"foo\")', env=env)
+    result = interpreter.run('raise Exception("foo")', env=env)
     assert isinstance(result.exception, Exception)
     assert str(result.exception) == "foo"
 

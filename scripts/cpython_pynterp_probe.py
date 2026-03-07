@@ -466,10 +466,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strict-worker-match",
         action="store_true",
-        help=(
-            "Fail fast unless the worker runtime stdlib path matches "
-            "<cpython-root>/Lib."
-        ),
+        help=("Fail fast unless the worker runtime stdlib path matches <cpython-root>/Lib."),
     )
     return parser.parse_args()
 
@@ -626,7 +623,9 @@ def worker_matches_cpython_lib(worker_runtime: dict[str, Any], cpython_root: Pat
     return worker_stdlib == expected_stdlib
 
 
-def compile_source_patterns(raw_patterns: tuple[str, ...] | list[str]) -> tuple[re.Pattern[str], ...]:
+def compile_source_patterns(
+    raw_patterns: tuple[str, ...] | list[str],
+) -> tuple[re.Pattern[str], ...]:
     return tuple(re.compile(pattern) for pattern in raw_patterns)
 
 
@@ -638,13 +637,15 @@ def count_declared_tests(source: str) -> int:
 
     count = 0
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+            "test_"
+        ):
             count += 1
         if isinstance(node, ast.ClassDef):
             for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith(
-                    "test_"
-                ):
+                if isinstance(
+                    item, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ) and item.name.startswith("test_"):
                     count += 1
     return count
 
@@ -766,7 +767,9 @@ def parse_error_signatures(raw_signatures: Any) -> list[tuple[str, int]]:
 
 
 def extract_blocked_attribute(reason: str) -> str | None:
-    if reason.startswith(BLOCKED_ATTRIBUTE_ERROR_PREFIX) and reason.endswith(BLOCKED_ATTRIBUTE_ERROR_SUFFIX):
+    if reason.startswith(BLOCKED_ATTRIBUTE_ERROR_PREFIX) and reason.endswith(
+        BLOCKED_ATTRIBUTE_ERROR_SUFFIX
+    ):
         return reason[len(BLOCKED_ATTRIBUTE_ERROR_PREFIX) : -len(BLOCKED_ATTRIBUTE_ERROR_SUFFIX)]
     return None
 
@@ -949,7 +952,9 @@ def main() -> int:
 
     individual_counts: Counter[str] = Counter()
     individual_counts["declared"] = sum(case.declared_tests for case in applicable)
-    individual_counts["files_with_declared"] = sum(1 for case in applicable if case.declared_tests > 0)
+    individual_counts["files_with_declared"] = sum(
+        1 for case in applicable if case.declared_tests > 0
+    )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         futures = {
@@ -1105,7 +1110,9 @@ def main() -> int:
             {
                 "signature": signature,
                 "count": count,
-                "top_files": suite_error_signature_files[signature][: max(1, args.top_files_per_category)],
+                "top_files": suite_error_signature_files[signature][
+                    : max(1, args.top_files_per_category)
+                ],
             }
         )
 
@@ -1136,7 +1143,11 @@ def main() -> int:
                 (file_status_counts["pass"] / applicable_count * 100.0) if applicable_count else 0.0
             ),
             "pass_plus_skip_of_applicable": (
-                ((file_status_counts["pass"] + file_status_counts["skip"]) / applicable_count * 100.0)
+                (
+                    (file_status_counts["pass"] + file_status_counts["skip"])
+                    / applicable_count
+                    * 100.0
+                )
                 if applicable_count
                 else 0.0
             ),
@@ -1148,7 +1159,9 @@ def main() -> int:
     }
 
     if args.basis == "tests":
-        individual_total = individual_counts["pass"] + individual_counts["fail"] + individual_counts["skip"]
+        individual_total = (
+            individual_counts["pass"] + individual_counts["fail"] + individual_counts["skip"]
+        )
         report["individual_test_counts"] = {
             "declared": individual_counts["declared"],
             "files_with_declared": individual_counts["files_with_declared"],

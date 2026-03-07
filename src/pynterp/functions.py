@@ -99,7 +99,9 @@ def _build_user_function_signature(
     parameters: list[inspect.Parameter] = []
     empty = inspect.Parameter.empty
 
-    positional_args = list(getattr(args, "posonlyargs", []) or []) + list(getattr(args, "args", []) or [])
+    positional_args = list(getattr(args, "posonlyargs", []) or []) + list(
+        getattr(args, "args", []) or []
+    )
     default_start = max(0, len(positional_args) - len(defaults))
 
     for index, arg_node in enumerate(positional_args):
@@ -290,7 +292,9 @@ class UserFunction:
         if self.is_async and not self.is_async_generator:
             if hasattr(inspect, "markcoroutinefunction"):
                 inspect.markcoroutinefunction(self)
-        name = node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<lambda>"
+        name = (
+            node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else "<lambda>"
+        )
         self.__name__ = name
         self.__qualname__ = qualname if qualname is not None else name
         self.__module__ = globals_dict.get("__name__", "__main__")

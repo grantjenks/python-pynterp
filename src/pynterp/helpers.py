@@ -246,7 +246,9 @@ class HelperMixin:
         if target_limit > state["max_auto"]:
             state["max_auto"] = target_limit
 
-    def _unpack_sequence_target(self, target: ast.Tuple | ast.List, value: Any) -> list[tuple[ast.AST, Any]]:
+    def _unpack_sequence_target(
+        self, target: ast.Tuple | ast.List, value: Any
+    ) -> list[tuple[ast.AST, Any]]:
         items = list(value)
         elts = list(target.elts)
         star_indexes = [index for index, elt in enumerate(elts) if isinstance(elt, ast.Starred)]
@@ -716,7 +718,9 @@ class HelperMixin:
 
                     while True:
                         if not _PY_ISINSTANCE(yielded, AwaitRequest):
-                            raise RuntimeError("internal error: unexpected async function yield value")
+                            raise RuntimeError(
+                                "internal error: unexpected async function yield value"
+                            )
                         try:
                             resume = await yielded.awaitable
                         except BaseException as exc:

@@ -5,11 +5,15 @@ import pytest
 from pynterp import Interpreter
 
 
+def run_raises(interp: Interpreter, source: str, *, env: dict, filename: str) -> None:
+    interp.run(source, env=env, filename=filename).raise_for_exception()
+
+
 def test_dunder_attribute_access_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
     with pytest.raises(AttributeError):
-        interp.run("RESULT = ().__class__.__mro__", env=env, filename="<dunder_block>")
+        run_raises(interp, "RESULT = ().__class__.__mro__", env=env, filename="<dunder_block>")
 
 
 def test_subclasses_escape_chain_is_blocked():
@@ -20,7 +24,7 @@ subs = ().__class__.__mro__[1].__subclasses__()
 RESULT = len(subs)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<escape_probe>")
+        run_raises(interp, source, env=env, filename="<escape_probe>")
 
 
 def test_generator_frame_escape_is_blocked():
@@ -35,7 +39,7 @@ frame = gen.gi_frame
 RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<frame_probe>")
+        run_raises(interp, source, env=env, filename="<frame_probe>")
 
 
 def test_async_generator_frame_escape_is_blocked():
@@ -50,7 +54,7 @@ frame = gen.ag_frame
 RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<async_frame_probe>")
+        run_raises(interp, source, env=env, filename="<async_frame_probe>")
 
 
 def test_type_getattribute_cannot_reach_coroutine_frame_globals():
@@ -69,7 +73,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_coroutine_frame_globals_probe>",
@@ -90,7 +95,8 @@ frame_getter = super(type(frame), frame).__getattribute__
 RESULT = frame_getter("f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_async_generator_frame_locals_probe>",
@@ -108,7 +114,7 @@ except Exception as exc:
 RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<traceback_frame_probe>")
+        run_raises(interp, source, env=env, filename="<traceback_frame_probe>")
 
 
 def test_type_getattribute_cannot_reach_traceback_frame_globals():
@@ -124,7 +130,8 @@ getter = type.__getattribute__
 RESULT = getter(frame, "f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_traceback_frame_globals_probe>",
@@ -152,7 +159,8 @@ getter = type.__getattribute__
 RESULT = getter(frame, "f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_tb_next_chain_frame_locals_probe>",
@@ -170,7 +178,7 @@ except Exception as exc:
 RESULT = frame.f_builtins["open"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<traceback_frame_builtins_probe>")
+        run_raises(interp, source, env=env, filename="<traceback_frame_builtins_probe>")
 
 
 def test_traceback_tb_next_frame_locals_escape_is_blocked():
@@ -192,7 +200,7 @@ except Exception as exc:
 RESULT = tb.tb_frame.f_locals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<traceback_tb_next_frame_locals_probe>")
+        run_raises(interp, source, env=env, filename="<traceback_tb_next_frame_locals_probe>")
 
 
 def test_traceback_f_back_chain_globals_escape_is_blocked():
@@ -214,7 +222,7 @@ except Exception as exc:
 RESULT = frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<traceback_f_back_frame_globals_probe>")
+        run_raises(interp, source, env=env, filename="<traceback_f_back_frame_globals_probe>")
 
 
 def test_object_getattribute_cannot_reach_traceback_frame_globals():
@@ -230,7 +238,8 @@ getter = object.__getattribute__
 RESULT = getter(tb.tb_frame, "f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_traceback_frame_globals_probe>",
@@ -250,7 +259,8 @@ getter = object.__getattribute__
 RESULT = getter(tb.tb_frame, "f_builtins")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_traceback_frame_builtins_probe>",
@@ -279,7 +289,8 @@ except Exception as exc:
 RESULT = getter(frame, "f_builtins")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_tb_frame_back_chain_frame_builtins_probe>",
@@ -309,7 +320,8 @@ while frame_getter(frame, "f_back") is not None:
 RESULT = frame_getter(frame, "f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_tb_frame_back_chain_frame_locals_probe>",
@@ -333,7 +345,7 @@ except Exception as exc:
 RESULT = tb.tb_frame.f_globals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<exception_context_traceback_probe>")
+        run_raises(interp, source, env=env, filename="<exception_context_traceback_probe>")
 
 
 def test_exception_cause_traceback_frame_locals_escape_is_blocked():
@@ -353,7 +365,7 @@ except Exception as exc:
 RESULT = tb.tb_frame.f_locals["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<exception_cause_traceback_probe>")
+        run_raises(interp, source, env=env, filename="<exception_cause_traceback_probe>")
 
 
 def test_object_getattribute_cannot_reach_exception_context_frame_globals():
@@ -376,7 +388,8 @@ except Exception as exc:
 RESULT = frame.f_globals
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_exception_context_frame_probe>",
@@ -398,7 +411,7 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<coroutine_frame_locals_probe>")
+        run_raises(interp, source, env=env, filename="<coroutine_frame_locals_probe>")
 
 
 def test_object_getattribute_cannot_bypass_attr_guard():
@@ -412,7 +425,7 @@ getter = object.__getattribute__
 RESULT = getter(f, "__globals__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_probe>")
 
 
 def test_type_getattribute_cannot_bypass_attr_guard():
@@ -426,7 +439,7 @@ getter = type.__getattribute__
 RESULT = getter(f, "__globals__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_probe>")
 
 
 def test_function_globals_escape_chain_is_blocked():
@@ -439,7 +452,7 @@ def f():
 RESULT = f.__globals__["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<function_globals_probe>")
+        run_raises(interp, source, env=env, filename="<function_globals_probe>")
 
 
 def test_super_getattribute_cannot_reach_function_globals():
@@ -453,7 +466,7 @@ getter = super(type(f), f).__getattribute__
 RESULT = getter("__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_globals_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_globals_probe>")
 
 
 def test_super_getattribute_cannot_bypass_attr_guard():
@@ -471,7 +484,7 @@ getter = super(Child, child).__getattribute__
 RESULT = getter("__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_probe>")
 
 
 def test_setattr_dunder_mutator_escape_chain_is_blocked():
@@ -485,7 +498,7 @@ target = Probe()
 RESULT = target.__setattr__("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<setattr_dunder_probe>")
+        run_raises(interp, source, env=env, filename="<setattr_dunder_probe>")
 
 
 def test_object_getattribute_cannot_reach_setattr_dunder_mutator():
@@ -500,7 +513,7 @@ getter = object.__getattribute__
 RESULT = getter(target, "__setattr__")("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_setattr_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_setattr_probe>")
 
 
 def test_type_getattribute_cannot_reach_setattr_dunder_mutator():
@@ -515,7 +528,7 @@ getter = type.__getattribute__
 RESULT = getter(target, "__setattr__")("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_setattr_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_setattr_probe>")
 
 
 def test_super_getattribute_cannot_reach_setattr_dunder_mutator():
@@ -530,7 +543,7 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter("__setattr__")("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_setattr_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_setattr_probe>")
 
 
 def test_delattr_dunder_mutator_escape_chain_is_blocked():
@@ -545,7 +558,7 @@ target.marker = 1
 RESULT = target.__delattr__("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<delattr_dunder_probe>")
+        run_raises(interp, source, env=env, filename="<delattr_dunder_probe>")
 
 
 def test_object_getattribute_cannot_reach_delattr_dunder_mutator():
@@ -561,7 +574,7 @@ getter = object.__getattribute__
 RESULT = getter(target, "__delattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_delattr_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_delattr_probe>")
 
 
 def test_type_getattribute_cannot_reach_delattr_dunder_mutator():
@@ -577,7 +590,7 @@ getter = type.__getattribute__
 RESULT = getter(target, "__delattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_delattr_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_delattr_probe>")
 
 
 def test_super_getattribute_cannot_reach_delattr_dunder_mutator():
@@ -593,7 +606,7 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter("__delattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_delattr_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_delattr_probe>")
 
 
 def test_descriptor_rebound_bound_getattribute_cannot_reach_setattr_dunder_mutator():
@@ -608,7 +621,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter("__setattr__")("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_setattr_probe>",
@@ -627,7 +641,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(name="__setattr__")("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_setattr_probe>",
@@ -647,7 +662,8 @@ key = "name"
 RESULT = getter(**{key: "__setattr__"})("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_setattr_probe>",
@@ -667,7 +683,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter("__delattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_delattr_probe>",
@@ -687,7 +704,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(name="__delattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_delattr_probe>",
@@ -708,7 +726,8 @@ key = "name"
 RESULT = getter(**{key: "__delattr__"})("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_delattr_probe>",
@@ -728,7 +747,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter("__getattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_dunder_getattr_probe>",
@@ -748,7 +768,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(name="__getattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_dunder_getattr_probe>",
@@ -769,7 +790,8 @@ key = "name"
 RESULT = getter(**{key: "__getattr__"})("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_dunder_getattr_probe>",
@@ -801,7 +823,8 @@ name = Sneaky("__setattr__")
 RESULT = getter(name=name)("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_setattr_probe>",
@@ -834,7 +857,8 @@ name = Sneaky("__delattr__")
 RESULT = getter(name=name)("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_delattr_probe>",
@@ -867,7 +891,8 @@ name = Sneaky("__getattr__")
 RESULT = getter(name=name)("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_dunder_getattr_probe>",
@@ -884,7 +909,7 @@ def f():
 RESULT = f.__code__.co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<function_code_probe>")
+        run_raises(interp, source, env=env, filename="<function_code_probe>")
 
 
 def test_object_getattribute_cannot_reach_function_code_object():
@@ -898,7 +923,7 @@ getter = object.__getattribute__
 RESULT = getter(f, "__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_code_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_code_probe>")
 
 
 def test_type_getattribute_cannot_reach_function_code_object():
@@ -912,7 +937,7 @@ getter = type.__getattribute__
 RESULT = getter(f, "__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_code_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_code_probe>")
 
 
 def test_super_getattribute_cannot_reach_function_code_object():
@@ -926,7 +951,7 @@ getter = super(type(f), f).__getattribute__
 RESULT = getter("__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_code_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_code_probe>")
 
 
 def test_bound_getattribute_cannot_reach_function_code_object():
@@ -940,7 +965,7 @@ getter = f.__getattribute__
 RESULT = getter("__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<bound_getattribute_code_probe>")
+        run_raises(interp, source, env=env, filename="<bound_getattribute_code_probe>")
 
 
 def test_stateful_str_subclass_positional_name_cannot_bypass_bound_getattribute_function_code_guard():
@@ -967,7 +992,8 @@ name = Sneaky("__code__")
 RESULT = getter(name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_code_probe>",
@@ -990,7 +1016,8 @@ name = Sneaky("__code__")
 RESULT = getter(name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_bound_getattribute_code_probe>",
@@ -1021,7 +1048,8 @@ name = Sneaky("__code__")
 RESULT = getter(name=name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_code_probe>",
@@ -1044,7 +1072,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_code_probe>",
@@ -1076,7 +1105,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(f, **{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_code_probe>",
@@ -1098,7 +1128,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(f, **{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_code_probe>",
@@ -1131,7 +1162,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_code_probe>",
@@ -1153,7 +1185,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(f, **{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_object_getattribute_code_probe>",
@@ -1185,7 +1218,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(f, **{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_type_getattribute_code_probe>",
@@ -1208,7 +1242,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_super_getattribute_code_probe>",
@@ -1223,7 +1258,7 @@ builtins_mod = len.__self__
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<builtin_callable_self_probe>")
+        run_raises(interp, source, env=env, filename="<builtin_callable_self_probe>")
 
 
 def test_object_getattribute_cannot_reach_builtin_callable_self_module():
@@ -1235,7 +1270,8 @@ builtins_mod = getter(len, "__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_builtin_callable_self_probe>",
@@ -1251,7 +1287,8 @@ builtins_mod = getter(len, "__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_builtin_callable_self_probe>",
@@ -1267,7 +1304,8 @@ builtins_mod = getter("__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_builtin_callable_self_probe>",
@@ -1282,7 +1320,8 @@ builtins_mod = object.__getattribute__(len, name="__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_keyword_builtin_callable_self_probe>",
@@ -1310,7 +1349,8 @@ builtins_mod = type.__getattribute__(len, name=name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_keyword_builtin_callable_self_probe>",
@@ -1326,7 +1366,8 @@ builtins_mod = getter(name="__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_keyword_builtin_callable_self_probe>",
@@ -1355,7 +1396,8 @@ builtins_mod = getter(name=name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_super_getattribute_builtin_callable_self_probe>",
@@ -1376,7 +1418,8 @@ builtins_mod = getter(name=name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_builtin_callable_self_probe>",
@@ -1392,7 +1435,8 @@ builtins_mod = getter("__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_builtin_callable_self_probe>",
@@ -1421,7 +1465,8 @@ builtins_mod = getter(name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_builtin_callable_self_probe>",
@@ -1442,7 +1487,8 @@ builtins_mod = getter(name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_bound_getattribute_builtin_callable_self_probe>",
@@ -1458,7 +1504,8 @@ builtins_mod = getter(name="__self__")
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_builtin_callable_self_probe>",
@@ -1487,7 +1534,8 @@ builtins_mod = getter(name=name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_builtin_callable_self_probe>",
@@ -1508,7 +1556,8 @@ builtins_mod = getter(name=name)
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_builtin_callable_self_probe>",
@@ -1539,7 +1588,8 @@ builtins_mod = getter(**{key: "__self__"})
 RESULT = builtins_mod.open
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_builtin_callable_self_probe>",
@@ -1554,7 +1604,7 @@ host = __import__.__self__
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<import_callable_self_probe>")
+        run_raises(interp, source, env=env, filename="<import_callable_self_probe>")
 
 
 def test_object_getattribute_cannot_reach_import_callable_self_interpreter():
@@ -1566,7 +1616,8 @@ host = getter(__import__, "__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_import_callable_self_probe>",
@@ -1582,7 +1633,8 @@ host = getter(__import__, "__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_import_callable_self_probe>",
@@ -1598,7 +1650,8 @@ host = getter("__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_import_callable_self_probe>",
@@ -1613,7 +1666,8 @@ host = object.__getattribute__(__import__, name="__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_keyword_import_callable_self_probe>",
@@ -1641,7 +1695,8 @@ host = type.__getattribute__(__import__, name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_keyword_import_callable_self_probe>",
@@ -1662,7 +1717,8 @@ host = getter(name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_keyword_import_callable_self_probe>",
@@ -1689,7 +1745,8 @@ name = Sneaky("__self__")
 RESULT = getattr(__import__, name).allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_getattr_import_callable_self_probe>",
@@ -1717,7 +1774,8 @@ name = Sneaky("__self__")
 RESULT = getter(__import__, name).allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_object_getattribute_import_callable_self_probe>",
@@ -1745,7 +1803,8 @@ name = Sneaky("__self__")
 RESULT = getter(name).allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_super_getattribute_import_callable_self_probe>",
@@ -1761,7 +1820,8 @@ host = getter("__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_import_callable_self_probe>",
@@ -1790,7 +1850,8 @@ host = getter(name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_import_callable_self_probe>",
@@ -1811,7 +1872,8 @@ host = getter(name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_bound_getattribute_import_callable_self_probe>",
@@ -1827,7 +1889,8 @@ host = getter(name="__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_import_callable_self_probe>",
@@ -1856,7 +1919,8 @@ host = getter(name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_import_callable_self_probe>",
@@ -1877,7 +1941,8 @@ host = getter(name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_import_callable_self_probe>",
@@ -1908,7 +1973,8 @@ host = getter(**{key: "__self__"})
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_import_callable_self_probe>",
@@ -1939,7 +2005,8 @@ name = Sneaky("__globals__")
 RESULT = getter(probe, name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_object_getattribute_function_globals_probe>",
@@ -1970,7 +2037,8 @@ name = Sneaky("__globals__")
 RESULT = getter(probe, name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_type_getattribute_function_globals_probe>",
@@ -2001,7 +2069,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_super_getattribute_function_globals_probe>",
@@ -2031,7 +2100,8 @@ name = Sneaky("__globals__")
 RESULT = object.__getattribute__(probe, name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_function_globals_probe>",
@@ -2061,7 +2131,8 @@ name = Sneaky("__globals__")
 RESULT = type.__getattribute__(probe, name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_function_globals_probe>",
@@ -2084,7 +2155,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_function_globals_probe>",
@@ -2104,7 +2176,8 @@ name = Sneaky("__self__")
 RESULT = getter(__import__, name).allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_type_getattribute_import_callable_self_probe>",
@@ -2124,7 +2197,8 @@ name = Sneaky("__self__")
 RESULT = getter(name).allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_super_getattribute_import_callable_self_probe>",
@@ -2139,7 +2213,7 @@ func = __import__.__func__
 RESULT = func.__globals__["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<import_callable_func_globals_probe>")
+        run_raises(interp, source, env=env, filename="<import_callable_func_globals_probe>")
 
 
 def test_object_getattribute_cannot_reach_import_callable_func_globals():
@@ -2151,7 +2225,8 @@ func = getter(__import__, "__func__")
 RESULT = getter(func, "__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_import_callable_func_globals_probe>",
@@ -2168,7 +2243,8 @@ type_getter = type.__getattribute__
 RESULT = type_getter(func, "__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_import_callable_func_globals_probe>",
@@ -2185,7 +2261,8 @@ func_getter = super(type(func), func).__getattribute__
 RESULT = func_getter("__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_import_callable_func_globals_probe>",
@@ -2216,7 +2293,8 @@ key = Sneaky("name")
 RESULT = getter(func, **{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_import_callable_func_globals_probe>",
@@ -2237,7 +2315,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(func, **{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_import_callable_func_globals_probe>",
@@ -2269,7 +2348,8 @@ key = Sneaky("name")
 RESULT = func_getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_import_callable_func_globals_probe>",
@@ -2286,7 +2366,7 @@ def probe():
 probe.interpreter.allowed_imports = None
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<interpreter_policy_probe>")
+        run_raises(interp, source, env=env, filename="<interpreter_policy_probe>")
 
 
 def test_object_getattribute_cannot_reach_user_function_interpreter():
@@ -2300,7 +2380,7 @@ getter = object.__getattribute__
 RESULT = getter(probe, "interpreter")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_interpreter_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_interpreter_probe>")
 
 
 def test_metaclass_getattribute_cannot_reach_subclasses_pivot():
@@ -2318,7 +2398,7 @@ getter = Meta.__getattribute__
 RESULT = getter(Probe, "__subclasses__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<metaclass_getattribute_probe>")
+        run_raises(interp, source, env=env, filename="<metaclass_getattribute_probe>")
 
 
 def test_str_subclass_str_override_positional_name_cannot_bypass_metaclass_getattribute_subclasses_guard():
@@ -2341,7 +2421,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_subclasses_probe>",
@@ -2376,7 +2457,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_metaclass_getattribute_class_subclasses_probe>",
@@ -2411,7 +2493,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_metaclass_getattribute_class_subclasses_probe>",
@@ -2438,7 +2521,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_metaclass_getattribute_class_subclasses_probe>",
@@ -2475,7 +2559,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_subclasses_probe>",
@@ -2502,7 +2587,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_metaclass_getattribute_class_subclasses_probe>",
@@ -2524,7 +2610,7 @@ getter = Meta.__getattribute__
 RESULT = getter(Probe, "__mro__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<metaclass_getattribute_mro_probe>")
+        run_raises(interp, source, env=env, filename="<metaclass_getattribute_mro_probe>")
 
 
 def test_str_subclass_str_override_positional_name_cannot_bypass_metaclass_getattribute_mro_guard():
@@ -2547,7 +2633,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_mro_probe>",
@@ -2582,7 +2669,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_metaclass_getattribute_class_mro_probe>",
@@ -2617,7 +2705,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_metaclass_getattribute_class_mro_probe>",
@@ -2644,7 +2733,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_metaclass_getattribute_class_mro_probe>",
@@ -2681,7 +2771,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_mro_probe>",
@@ -2708,7 +2799,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_metaclass_getattribute_class_mro_probe>",
@@ -2730,7 +2822,7 @@ getter = Meta.__getattribute__
 RESULT = getter(Probe, "__bases__")[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<metaclass_getattribute_bases_probe>")
+        run_raises(interp, source, env=env, filename="<metaclass_getattribute_bases_probe>")
 
 
 def test_str_subclass_str_override_positional_name_cannot_bypass_metaclass_getattribute_bases_guard():
@@ -2753,7 +2845,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_bases_probe>",
@@ -2788,7 +2881,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_metaclass_getattribute_class_bases_probe>",
@@ -2823,7 +2917,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_metaclass_getattribute_class_bases_probe>",
@@ -2850,7 +2945,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_metaclass_getattribute_class_bases_probe>",
@@ -2887,7 +2983,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_bases_probe>",
@@ -2914,7 +3011,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_metaclass_getattribute_class_bases_probe>",
@@ -2936,7 +3034,7 @@ getter = Meta.__getattribute__
 RESULT = getter(Probe, "__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<metaclass_getattribute_base_probe>")
+        run_raises(interp, source, env=env, filename="<metaclass_getattribute_base_probe>")
 
 
 def test_str_subclass_str_override_positional_name_cannot_bypass_metaclass_getattribute_base_guard():
@@ -2959,7 +3057,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_metaclass_getattribute_class_base_probe>",
@@ -2994,7 +3093,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_metaclass_getattribute_class_base_probe>",
@@ -3029,7 +3129,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_metaclass_getattribute_class_base_probe>",
@@ -3056,7 +3157,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_metaclass_getattribute_class_base_probe>",
@@ -3093,7 +3195,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_metaclass_getattribute_class_base_probe>",
@@ -3120,7 +3223,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_metaclass_getattribute_class_base_probe>",
@@ -3138,7 +3242,8 @@ getter = object.__getattribute__
 RESULT = getter(Probe, "__subclasses__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_class_subclasses_probe>",
@@ -3156,7 +3261,8 @@ getter = type.__getattribute__
 RESULT = getter(Probe, "__subclasses__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_class_subclasses_probe>",
@@ -3174,7 +3280,8 @@ getter = super(type(Probe), Probe).__getattribute__
 RESULT = getter("__subclasses__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_class_subclasses_probe>",
@@ -3204,7 +3311,8 @@ name = Sneaky("__subclasses__")
 RESULT = object.__getattribute__(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_class_subclasses_probe>",
@@ -3234,7 +3342,8 @@ name = Sneaky("__subclasses__")
 RESULT = type.__getattribute__(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_class_subclasses_probe>",
@@ -3257,7 +3366,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_class_subclasses_probe>",
@@ -3289,7 +3399,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_class_subclasses_probe>",
@@ -3311,7 +3422,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_class_subclasses_probe>",
@@ -3344,7 +3456,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_class_subclasses_probe>",
@@ -3361,7 +3474,7 @@ class Probe:
 RESULT = Probe.__base__
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<class_base_probe>")
+        run_raises(interp, source, env=env, filename="<class_base_probe>")
 
 
 def test_object_getattribute_cannot_reach_class_base():
@@ -3375,7 +3488,7 @@ getter = object.__getattribute__
 RESULT = getter(Probe, "__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_class_base_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_class_base_probe>")
 
 
 def test_type_getattribute_cannot_reach_class_base():
@@ -3389,7 +3502,7 @@ getter = type.__getattribute__
 RESULT = getter(Probe, "__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_class_base_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_class_base_probe>")
 
 
 def test_super_getattribute_cannot_reach_class_base():
@@ -3403,7 +3516,7 @@ getter = super(type(Probe), Probe).__getattribute__
 RESULT = getter("__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_class_base_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_class_base_probe>")
 
 
 def test_stateful_str_subclass_keyword_key_cannot_bypass_object_getattribute_class_base_guard():
@@ -3431,7 +3544,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(Probe, **{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_class_base_probe>",
@@ -3453,7 +3567,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(Probe, **{key: "__bases__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_class_bases_probe>",
@@ -3486,7 +3601,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_class_base_probe>",
@@ -3503,7 +3619,7 @@ class Probe:
 RESULT = Probe.__bases__
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<class_bases_probe>")
+        run_raises(interp, source, env=env, filename="<class_bases_probe>")
 
 
 def test_object_getattribute_cannot_reach_class_bases():
@@ -3517,7 +3633,7 @@ getter = object.__getattribute__
 RESULT = getter(Probe, "__bases__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_class_bases_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_class_bases_probe>")
 
 
 def test_type_getattribute_cannot_reach_class_bases():
@@ -3531,7 +3647,7 @@ getter = type.__getattribute__
 RESULT = getter(Probe, "__bases__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_class_bases_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_class_bases_probe>")
 
 
 def test_super_getattribute_cannot_reach_class_bases():
@@ -3545,7 +3661,7 @@ getter = super(type(Probe), Probe).__getattribute__
 RESULT = getter("__bases__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_class_bases_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_class_bases_probe>")
 
 
 def test_object_getattribute_cannot_reach_class_mro():
@@ -3559,7 +3675,7 @@ getter = object.__getattribute__
 RESULT = getter(Probe, "__mro__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_class_mro_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_class_mro_probe>")
 
 
 def test_type_getattribute_cannot_reach_class_mro():
@@ -3573,7 +3689,7 @@ getter = type.__getattribute__
 RESULT = getter(Probe, "__mro__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_class_mro_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_class_mro_probe>")
 
 
 def test_super_getattribute_cannot_reach_class_mro():
@@ -3587,7 +3703,7 @@ getter = super(type(Probe), Probe).__getattribute__
 RESULT = getter("__mro__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_class_mro_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_class_mro_probe>")
 
 
 def test_stateful_str_subclass_keyword_name_cannot_bypass_object_getattribute_class_mro_guard():
@@ -3613,7 +3729,8 @@ name = Sneaky("__mro__")
 RESULT = object.__getattribute__(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_class_mro_probe>",
@@ -3643,7 +3760,8 @@ name = Sneaky("__mro__")
 RESULT = type.__getattribute__(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_class_mro_probe>",
@@ -3666,7 +3784,8 @@ name = Sneaky("__mro__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_class_mro_probe>",
@@ -3698,7 +3817,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(Probe, **{key: "__mro__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_class_mro_probe>",
@@ -3720,7 +3840,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(Probe, **{key: "__mro__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_class_mro_probe>",
@@ -3753,7 +3874,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__mro__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_class_mro_probe>",
@@ -3772,7 +3894,7 @@ target = Probe()
 RESULT = target.__getattr__("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<dunder_getattr_probe>")
+        run_raises(interp, source, env=env, filename="<dunder_getattr_probe>")
 
 
 def test_object_getattribute_cannot_reach_dunder_getattr():
@@ -3788,7 +3910,7 @@ getter = object.__getattribute__
 RESULT = getter(target, "__getattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_dunder_getattr_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_dunder_getattr_probe>")
 
 
 def test_type_getattribute_cannot_reach_dunder_getattr():
@@ -3804,7 +3926,7 @@ getter = type.__getattribute__
 RESULT = getter(target, "__getattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_dunder_getattr_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_dunder_getattr_probe>")
 
 
 def test_super_getattribute_cannot_reach_dunder_getattr():
@@ -3820,7 +3942,7 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter("__getattr__")("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_dunder_getattr_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_dunder_getattr_probe>")
 
 
 def test_stateful_str_subclass_keyword_name_cannot_bypass_object_getattribute_dunder_getattr_guard():
@@ -3848,7 +3970,8 @@ name = Sneaky("__getattr__")
 RESULT = object.__getattribute__(target, name=name)("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_dunder_getattr_probe>",
@@ -3880,7 +4003,8 @@ name = Sneaky("__getattr__")
 RESULT = type.__getattribute__(target, name=name)("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_dunder_getattr_probe>",
@@ -3905,7 +4029,8 @@ name = Sneaky("__getattr__")
 RESULT = getter(name=name)("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_dunder_getattr_probe>",
@@ -3925,7 +4050,9 @@ getter = target.__getattribute__
 RESULT = getter(name="__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<bound_getattribute_keyword_dunder_dict_probe>")
+        run_raises(
+            interp, source, env=env, filename="<bound_getattribute_keyword_dunder_dict_probe>"
+        )
 
 
 def test_stateful_str_subclass_keyword_name_cannot_bypass_bound_getattribute_dunder_dict_guard():
@@ -3953,7 +4080,8 @@ getter = target.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_dunder_dict_probe>",
@@ -3985,7 +4113,8 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_super_getattribute_dunder_dict_probe>",
@@ -4009,7 +4138,8 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_dunder_dict_probe>",
@@ -4029,7 +4159,8 @@ getter = frame.__getattribute__
 RESULT = getter(name="f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_traceback_frame_globals_probe>",
@@ -4062,7 +4193,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_traceback_frame_globals_probe>",
@@ -4087,7 +4219,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_traceback_frame_builtins_probe>",
@@ -4107,7 +4240,8 @@ getter = frame.__getattribute__
 RESULT = getter(name="f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_traceback_frame_locals_probe>",
@@ -4140,7 +4274,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_traceback_frame_locals_probe>",
@@ -4165,7 +4300,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_traceback_frame_locals_probe>",
@@ -4188,7 +4324,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_coroutine_frame_globals_probe>",
@@ -4224,7 +4361,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -4252,7 +4390,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_coroutine_frame_locals_probe>",
@@ -4272,7 +4411,8 @@ getter = frame.__getattribute__
 RESULT = getter(name="f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_async_generator_frame_globals_probe>",
@@ -4305,7 +4445,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -4330,7 +4471,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_async_generator_frame_locals_probe>",
@@ -4353,7 +4495,7 @@ fn = outer()
 RESULT = fn.__closure__[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<closure_cell_probe>")
+        run_raises(interp, source, env=env, filename="<closure_cell_probe>")
 
 
 def test_object_getattribute_cannot_reach_function_closure_cells():
@@ -4374,7 +4516,8 @@ cells = getter(fn, "__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_closure_cell_probe>",
@@ -4399,7 +4542,8 @@ cells = getter(fn, "__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_closure_cell_probe>",
@@ -4424,7 +4568,8 @@ cells = getter("__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_closure_cell_probe>",
@@ -4449,7 +4594,8 @@ cells = getter("__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_closure_cell_probe>",
@@ -4487,7 +4633,8 @@ cells = getter(name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_closure_probe>",
@@ -4517,7 +4664,8 @@ cells = getter(name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_bound_getattribute_closure_probe>",
@@ -4555,7 +4703,8 @@ cells = getter(name=name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_closure_probe>",
@@ -4585,7 +4734,8 @@ cells = getter(**{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_closure_probe>",
@@ -4603,7 +4753,7 @@ target = Probe()
 RESULT = target.__reduce_ex__(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<reduce_hook_probe>")
+        run_raises(interp, source, env=env, filename="<reduce_hook_probe>")
 
 
 def test_reduce_hook_escape_chain_is_blocked():
@@ -4617,7 +4767,7 @@ target = Probe()
 RESULT = target.__reduce__()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<reduce_probe>")
+        run_raises(interp, source, env=env, filename="<reduce_probe>")
 
 
 def test_object_getattribute_cannot_reach_reduction_hook():
@@ -4632,7 +4782,7 @@ getter = object.__getattribute__
 RESULT = getter(target, "__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_reduce_hook_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_reduce_hook_probe>")
 
 
 def test_object_getattribute_cannot_reach_reduce_hook():
@@ -4647,7 +4797,7 @@ getter = object.__getattribute__
 RESULT = getter(target, "__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_reduce_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_reduce_probe>")
 
 
 def test_type_getattribute_cannot_reach_reduction_hook():
@@ -4662,7 +4812,7 @@ getter = type.__getattribute__
 RESULT = getter(target, "__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_reduce_hook_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_reduce_hook_probe>")
 
 
 def test_type_getattribute_cannot_reach_reduce_hook():
@@ -4677,7 +4827,7 @@ getter = type.__getattribute__
 RESULT = getter(target, "__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_reduce_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_reduce_probe>")
 
 
 def test_super_getattribute_cannot_reach_reduction_hook():
@@ -4692,7 +4842,7 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter("__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_reduce_hook_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_reduce_hook_probe>")
 
 
 def test_super_getattribute_cannot_reach_reduce_hook():
@@ -4707,7 +4857,7 @@ getter = super(type(target), target).__getattribute__
 RESULT = getter("__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_reduce_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_reduce_probe>")
 
 
 def test_bound_getattribute_cannot_reach_reduce_hook():
@@ -4722,7 +4872,7 @@ getter = target.__getattribute__
 RESULT = getter("__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<bound_getattribute_reduce_probe>")
+        run_raises(interp, source, env=env, filename="<bound_getattribute_reduce_probe>")
 
 
 def test_stateful_str_subclass_positional_name_cannot_bypass_bound_getattribute_reduce_hook_guard():
@@ -4750,7 +4900,8 @@ getter = target.__getattribute__
 RESULT = getter(name)(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_reduce_hook_probe>",
@@ -4782,7 +4933,8 @@ getter = target.__getattribute__
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_reduce_probe>",
@@ -4806,7 +4958,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce_ex__"})(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_reduce_hook_probe>",
@@ -4829,7 +4982,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_coroutine_frame_globals_probe>",
@@ -4852,7 +5006,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_coroutine_frame_builtins_probe>",
@@ -4872,7 +5027,8 @@ frame = getter(gen, "gi_frame")
 RESULT = getter(frame, "f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_generator_frame_globals_probe>",
@@ -4892,7 +5048,8 @@ frame = getter(gen, "gi_frame")
 RESULT = getter(frame, "f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<type_getattribute_generator_frame_globals_probe>",
@@ -4913,7 +5070,8 @@ frame_getter = super(type(frame), frame).__getattribute__
 RESULT = frame_getter("f_builtins")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<super_getattribute_generator_frame_builtins_probe>",
@@ -4944,7 +5102,8 @@ name = Sneaky("gi_frame")
 RESULT = type.__getattribute__(gen, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_type_getattribute_generator_frame_probe>",
@@ -4963,7 +5122,8 @@ getter = gen.__getattribute__
 RESULT = getter(name="gi_frame")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_generator_frame_probe>",
@@ -4994,7 +5154,8 @@ name = Sneaky("gi_frame")
 RESULT = object.__getattribute__(gen, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_generator_frame_probe>",
@@ -5018,7 +5179,8 @@ name = Sneaky("gi_frame")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_generator_frame_probe>",
@@ -5038,7 +5200,8 @@ getter = frame.__getattribute__
 RESULT = getter(name="f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_generator_frame_globals_probe>",
@@ -5071,7 +5234,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_generator_frame_builtins_probe>",
@@ -5096,7 +5260,8 @@ getter = frame.__getattribute__
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_generator_frame_locals_probe>",
@@ -5116,7 +5281,8 @@ frame = getter(ag, "ag_frame")
 RESULT = getter(frame, "f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_async_generator_frame_locals_probe>",
@@ -5145,7 +5311,8 @@ except Exception as exc:
 RESULT = getter(frame, "f_locals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<object_getattribute_tb_next_chain_frame_locals_probe>",
@@ -5177,7 +5344,8 @@ name = Sneaky("f_globals")
 RESULT = object.__getattribute__(frame, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_traceback_frame_globals_probe>",
@@ -5209,7 +5377,8 @@ name = Sneaky("f_builtins")
 RESULT = type.__getattribute__(frame, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_traceback_frame_builtins_probe>",
@@ -5237,7 +5406,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_coroutine_frame_locals_probe>",
@@ -5253,7 +5423,7 @@ loader = math.__loader__
 RESULT = loader.load_module("os")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<module_loader_import_smuggling_probe>")
+        run_raises(interp, source, env=env, filename="<module_loader_import_smuggling_probe>")
 
 
 def test_module_spec_import_smuggling_chain_is_blocked():
@@ -5265,7 +5435,7 @@ spec = math.__spec__
 RESULT = spec.loader.load_module("os")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<module_spec_import_smuggling_probe>")
+        run_raises(interp, source, env=env, filename="<module_spec_import_smuggling_probe>")
 
 
 def test_module_dict_import_smuggling_chain_is_blocked():
@@ -5277,7 +5447,7 @@ module_dict = math.__dict__
 RESULT = module_dict["__loader__"].load_module("os")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<module_dict_import_smuggling_probe>")
+        run_raises(interp, source, env=env, filename="<module_dict_import_smuggling_probe>")
 
 
 def test_object_getattribute_cannot_reach_module_loader_metadata():
@@ -5289,7 +5459,7 @@ getter = object.__getattribute__
 RESULT = getter(math, "__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_module_loader_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_module_loader_probe>")
 
 
 def test_object_getattribute_cannot_reach_module_dict_metadata():
@@ -5301,7 +5471,7 @@ getter = object.__getattribute__
 RESULT = getter(math, "__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<object_getattribute_module_dict_probe>")
+        run_raises(interp, source, env=env, filename="<object_getattribute_module_dict_probe>")
 
 
 def test_super_getattribute_cannot_reach_module_dict_metadata():
@@ -5313,7 +5483,7 @@ getter = super(type(math), math).__getattribute__
 RESULT = getter("__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_module_dict_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_module_dict_probe>")
 
 
 def test_type_getattribute_cannot_reach_module_dict_metadata():
@@ -5325,7 +5495,7 @@ getter = type.__getattribute__
 RESULT = getter(math, "__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_module_dict_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_module_dict_probe>")
 
 
 def test_type_getattribute_cannot_reach_module_spec_metadata():
@@ -5337,7 +5507,7 @@ getter = type.__getattribute__
 RESULT = getter(math, "__spec__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<type_getattribute_module_spec_probe>")
+        run_raises(interp, source, env=env, filename="<type_getattribute_module_spec_probe>")
 
 
 def test_super_getattribute_cannot_reach_module_loader_metadata():
@@ -5349,7 +5519,7 @@ getter = super(type(math), math).__getattribute__
 RESULT = getter("__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(source, env=env, filename="<super_getattribute_module_loader_probe>")
+        run_raises(interp, source, env=env, filename="<super_getattribute_module_loader_probe>")
 
 
 def test_bound_getattribute_keyword_name_cannot_reach_module_loader_metadata():
@@ -5361,7 +5531,8 @@ getter = math.__getattribute__
 RESULT = getter(name="__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_module_loader_probe>",
@@ -5377,7 +5548,8 @@ getter = math.__getattribute__
 RESULT = getter(name="__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_module_dict_probe>",
@@ -5393,7 +5565,8 @@ getter = math.__getattribute__
 RESULT = getter(name="__spec__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_module_spec_probe>",
@@ -5425,7 +5598,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_module_loader_probe>",
@@ -5447,7 +5621,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_module_dict_probe>",
@@ -5479,7 +5654,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__spec__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_module_spec_probe>",
@@ -5509,7 +5685,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_bound_getattribute_module_loader_probe>",
@@ -5539,7 +5716,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_bound_getattribute_module_dict_probe>",
@@ -5561,7 +5739,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_bound_getattribute_module_spec_probe>",
@@ -5591,7 +5770,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_module_dict_probe>",
@@ -5613,7 +5793,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_module_dict_probe>",
@@ -5643,7 +5824,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_module_loader_probe>",
@@ -5673,7 +5855,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_module_spec_probe>",
@@ -5695,7 +5878,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_module_spec_probe>",
@@ -5717,7 +5901,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_module_loader_probe>",
@@ -5746,7 +5931,8 @@ name = Sneaky("__loader__")
 RESULT = getattr(math, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_getattr_module_loader_probe>",
@@ -5775,7 +5961,8 @@ name = Sneaky("__spec__")
 RESULT = type.__getattribute__(math, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_type_getattribute_module_spec_probe>",
@@ -5797,7 +5984,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_super_getattribute_module_loader_probe>",
@@ -5826,7 +6014,8 @@ name = Sneaky("__loader__")
 RESULT = object.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_module_loader_probe>",
@@ -5856,7 +6045,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_super_getattribute_module_spec_probe>",
@@ -5877,7 +6067,8 @@ name = Sneaky("__loader__")
 RESULT = type.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_type_getattribute_module_loader_probe>",
@@ -5906,7 +6097,8 @@ name = Sneaky("__dict__")
 RESULT = type.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_type_getattribute_module_dict_probe>",
@@ -5935,7 +6127,8 @@ name = Sneaky("__dict__")
 RESULT = object.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_object_getattribute_module_dict_probe>",
@@ -5965,7 +6158,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_super_getattribute_module_dict_probe>",
@@ -5986,7 +6180,8 @@ name = Sneaky("__dict__")
 RESULT = type.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_type_getattribute_module_dict_probe>",
@@ -6007,7 +6202,8 @@ name = Sneaky("__dict__")
 RESULT = object.__getattribute__(math, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_object_getattribute_module_dict_probe>",
@@ -6029,7 +6225,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_super_getattribute_module_dict_probe>",
@@ -6064,7 +6261,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_traceback_frame_globals_probe>",
@@ -6089,7 +6287,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_generator_frame_locals_probe>",
@@ -6127,7 +6326,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_coroutine_frame_builtins_probe>",
@@ -6161,7 +6361,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(frame, **{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_traceback_frame_locals_probe>",
@@ -6185,7 +6386,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(frame, **{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_generator_frame_globals_probe>",
@@ -6216,7 +6418,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(math, **{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_type_getattribute_module_loader_probe>",
@@ -6245,7 +6448,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(__import__, **{key: "__self__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_importer_self_probe>",
@@ -6267,7 +6471,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(probe, **{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_function_globals_probe>",
@@ -6299,7 +6504,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(probe, **{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_function_globals_probe>",
@@ -6331,7 +6537,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(probe, **{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_type_getattribute_function_globals_probe>",
@@ -6364,7 +6571,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_function_globals_probe>",
@@ -6394,7 +6602,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__self__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_builtin_self_probe>",
@@ -6427,7 +6636,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(target, **{key: "__reduce__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_reduce_probe>",
@@ -6460,7 +6670,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(target, **{key: "__reduce_ex__"})(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_type_getattribute_reduction_hook_probe>",
@@ -6484,7 +6695,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_super_getattribute_reduce_probe>",
@@ -6521,7 +6733,8 @@ cells = object.__getattribute__(fn, **{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_closure_probe>",
@@ -6548,7 +6761,8 @@ cells = type.__getattribute__(fn, **{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_closure_probe>",
@@ -6586,7 +6800,8 @@ cells = getter(**{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_closure_probe>",
@@ -6619,7 +6834,8 @@ key = Sneaky("name")
 RESULT = object.__getattribute__(target, **{key: "__setattr__"})("marker", 1)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_object_getattribute_setattr_probe>",
@@ -6643,7 +6859,8 @@ key = Sneaky("name")
 RESULT = type.__getattribute__(target, **{key: "__delattr__"})("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_type_getattribute_delattr_probe>",
@@ -6678,7 +6895,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__getattr__"})("marker")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_super_getattribute_dunder_getattr_probe>",
@@ -6696,7 +6914,8 @@ getter = probe.__getattribute__
 RESULT = getter("__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_function_globals_probe>",
@@ -6727,7 +6946,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_bound_getattribute_function_globals_probe>",
@@ -6750,7 +6970,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_bound_getattribute_function_globals_probe>",
@@ -6781,7 +7002,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_bound_getattribute_function_globals_probe>",
@@ -6799,7 +7021,8 @@ getter = probe.__getattribute__
 RESULT = getter(name="__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<bound_getattribute_keyword_function_globals_probe>",
@@ -6822,7 +7045,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_bound_getattribute_function_globals_probe>",
@@ -6845,7 +7069,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_bound_getattribute_function_globals_probe>",
@@ -6878,7 +7103,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_bound_getattribute_function_globals_probe>",
@@ -6896,7 +7122,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter("__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -6914,7 +7141,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter("__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -6932,7 +7160,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter(name="__code__").co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_function_code_probe>",
@@ -6950,7 +7179,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter(**{"name": "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_function_code_probe>",
@@ -6983,7 +7213,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7014,7 +7245,8 @@ name = Sneaky("__code__")
 RESULT = getter(name=name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7037,7 +7269,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__code__"}).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7060,7 +7293,8 @@ name = Sneaky("__code__")
 RESULT = getter(name=name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7093,7 +7327,8 @@ name = Sneaky("__code__")
 RESULT = getter(name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7116,7 +7351,8 @@ name = Sneaky("__code__")
 RESULT = getter(name).co_consts
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_function_code_probe>",
@@ -7141,7 +7377,8 @@ cells = getter("__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7166,7 +7403,8 @@ cells = getter(name="__closure__")
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_function_closure_probe>",
@@ -7191,7 +7429,8 @@ cells = getter(**{"name": "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_function_closure_probe>",
@@ -7231,7 +7470,8 @@ cells = getter(**{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7269,7 +7509,8 @@ cells = getter(name=name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7299,7 +7540,8 @@ cells = getter(**{key: "__closure__"})
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7329,7 +7571,8 @@ cells = getter(name=name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7369,7 +7612,8 @@ cells = getter(name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7399,7 +7643,8 @@ cells = getter(name)
 RESULT = cells[0].cell_contents
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_function_closure_probe>",
@@ -7415,7 +7660,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter("__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7431,7 +7677,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter("__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_probe>",
@@ -7447,7 +7694,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(name="__reduce__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_hook_keyword_probe>",
@@ -7463,7 +7711,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(name="__reduce_ex__")(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_ex_keyword_probe>",
@@ -7479,7 +7728,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(**{"name": "__reduce_ex__"})(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_hook_keyword_key_probe>",
@@ -7495,7 +7745,8 @@ getter = target.__getattribute__.__get__(None, type(target))
 RESULT = getter(**{"name": "__reduce__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_reduce_keyword_key_probe>",
@@ -7526,7 +7777,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7557,7 +7809,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce_ex__"})(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_reduce_ex_hook_probe>",
@@ -7578,7 +7831,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce_ex__"})(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7599,7 +7853,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__reduce__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_reduce_probe>",
@@ -7628,7 +7883,8 @@ name = Sneaky("__reduce_ex__")
 RESULT = getter(name=name)(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7657,7 +7913,8 @@ name = Sneaky("__reduce__")
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_reduce_probe>",
@@ -7678,7 +7935,8 @@ name = Sneaky("__reduce__")
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7699,7 +7957,8 @@ name = Sneaky("__reduce_ex__")
 RESULT = getter(name=name)(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_reduce_ex_probe>",
@@ -7730,7 +7989,8 @@ name = Sneaky("__reduce__")
 RESULT = getter(name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7761,7 +8021,8 @@ name = Sneaky("__reduce_ex__")
 RESULT = getter(name)(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_reduce_ex_probe>",
@@ -7782,7 +8043,8 @@ name = Sneaky("__reduce_ex__")
 RESULT = getter(name)(4)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_reduce_hook_probe>",
@@ -7803,7 +8065,8 @@ name = Sneaky("__reduce__")
 RESULT = getter(name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_reduce_probe>",
@@ -7819,7 +8082,8 @@ host = getter("__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -7835,7 +8099,8 @@ host = getter(name="__self__")
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_importer_self_keyword_probe>",
@@ -7851,7 +8116,8 @@ host = getter(**{"name": "__self__"})
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_importer_self_keyword_key_probe>",
@@ -7868,7 +8134,8 @@ getter = math.__getattribute__.__get__(None, type(math))
 RESULT = getter("__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_module_loader_probe>",
@@ -7885,7 +8152,8 @@ getter = math.__getattribute__.__get__(None, type(math))
 RESULT = getter("__spec__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_module_spec_probe>",
@@ -7902,7 +8170,8 @@ getter = math.__getattribute__.__get__(None, type(math))
 RESULT = getter("__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -7920,7 +8189,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter(name="__globals__")["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_function_globals_probe>",
@@ -7938,7 +8208,8 @@ getter = probe.__getattribute__.__get__(None, type(probe))
 RESULT = getter(**{"name": "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_keyword_key_function_globals_probe>",
@@ -7969,7 +8240,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -7992,7 +8264,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -8025,7 +8298,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -8048,7 +8322,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -8081,7 +8356,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__globals__"})["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -8104,7 +8380,8 @@ name = Sneaky("__globals__")
 RESULT = getter(name=name)["__builtins__"]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_function_globals_probe>",
@@ -8135,7 +8412,8 @@ host = getter(**{key: "__self__"})
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8164,7 +8442,8 @@ host = getter(name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8185,7 +8464,8 @@ host = getter(name=name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8214,7 +8494,8 @@ host = getter(name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8235,7 +8516,8 @@ host = getter(name)
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8256,7 +8538,8 @@ host = getter(**{key: "__self__"})
 RESULT = host.allowed_imports
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_importer_self_probe>",
@@ -8278,7 +8561,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_module_loader_probe>",
@@ -8308,7 +8592,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_module_loader_probe>",
@@ -8323,7 +8608,8 @@ getter = len.__getattribute__.__get__(None, type(len))
 RESULT = getter("__self__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8338,7 +8624,8 @@ getter = len.__getattribute__.__get__(None, type(len))
 RESULT = getter(name="__self__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_builtin_self_keyword_probe>",
@@ -8353,7 +8640,8 @@ getter = len.__getattribute__.__get__(None, type(len))
 RESULT = getter(**{"name": "__self__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_builtin_self_keyword_key_probe>",
@@ -8383,7 +8671,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__self__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8411,7 +8700,8 @@ name = Sneaky("__self__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8431,7 +8721,8 @@ name = Sneaky("__self__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8459,7 +8750,8 @@ name = Sneaky("__self__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8479,7 +8771,8 @@ name = Sneaky("__self__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8499,7 +8792,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__self__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_builtin_self_probe>",
@@ -8529,7 +8823,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_module_spec_probe>",
@@ -8561,7 +8856,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__spec__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_module_spec_probe>",
@@ -8583,7 +8879,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_module_loader_probe>",
@@ -8615,7 +8912,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8647,7 +8945,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8669,7 +8968,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8691,7 +8991,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8723,7 +9024,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8745,7 +9047,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_module_dict_probe>",
@@ -8765,7 +9068,8 @@ getter = frame.__getattribute__.__get__(None, type(frame))
 RESULT = getter("f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -8790,7 +9094,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -8815,7 +9120,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -8840,7 +9146,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -8875,7 +9182,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -8898,7 +9206,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -8926,7 +9235,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -8954,7 +9264,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -8982,7 +9293,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -9020,7 +9332,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -9040,7 +9353,8 @@ getter = frame.__getattribute__.__get__(None, type(frame))
 RESULT = getter("f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -9065,7 +9379,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -9090,7 +9405,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -9115,7 +9431,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -9150,7 +9467,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -9170,7 +9488,8 @@ getter = frame.__getattribute__.__get__(None, type(frame))
 RESULT = getter("f_globals")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -9195,7 +9514,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -9220,7 +9540,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -9245,7 +9566,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -9280,7 +9602,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -9315,7 +9638,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -9353,7 +9677,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -9388,7 +9713,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -9423,7 +9749,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -9458,7 +9785,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -9496,7 +9824,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -9531,7 +9860,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -9566,7 +9896,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -9601,7 +9932,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -9639,7 +9971,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -9674,7 +10007,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -9709,7 +10043,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -9744,7 +10079,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -9782,7 +10118,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -9817,7 +10154,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -9852,7 +10190,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -9887,7 +10226,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -9925,7 +10265,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -9960,7 +10301,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -9995,7 +10337,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -10030,7 +10373,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -10068,7 +10412,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -10103,7 +10448,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -10138,7 +10484,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -10173,7 +10520,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -10211,7 +10559,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -10246,7 +10595,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -10281,7 +10631,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -10316,7 +10667,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -10354,7 +10706,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -10389,7 +10742,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -10424,7 +10778,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -10449,7 +10804,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -10477,7 +10833,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -10502,7 +10859,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -10527,7 +10885,8 @@ name = Sneaky("f_locals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -10552,7 +10911,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -10580,7 +10940,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -10605,7 +10966,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -10630,7 +10992,8 @@ name = Sneaky("f_builtins")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -10655,7 +11018,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -10683,7 +11047,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -10708,7 +11073,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -10733,7 +11099,8 @@ name = Sneaky("f_globals")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -10758,7 +11125,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_globals_probe>",
@@ -10786,7 +11154,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_globals_probe>",
@@ -10811,7 +11180,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_globals_probe>",
@@ -10836,7 +11206,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_globals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_globals_probe>",
@@ -10861,7 +11232,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_locals_probe>",
@@ -10889,7 +11261,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_locals_probe>",
@@ -10914,7 +11287,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_locals_probe>",
@@ -10939,7 +11313,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_locals"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_locals_probe>",
@@ -10964,7 +11339,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_traceback_frame_builtins_probe>",
@@ -10992,7 +11368,8 @@ finally:
     co.close()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_coroutine_frame_builtins_probe>",
@@ -11017,7 +11394,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_async_generator_frame_builtins_probe>",
@@ -11042,7 +11420,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "f_builtins"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_getattribute_generator_frame_builtins_probe>",
@@ -11060,7 +11439,8 @@ getter = type.__getattribute__.__get__(None, type(Probe))
 RESULT = getter(Probe, "__subclasses__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11078,7 +11458,8 @@ getter = type.__getattribute__.__get__(None, type(Probe))
 RESULT = getter(Probe, "__mro__")[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11096,7 +11477,8 @@ getter = type.__getattribute__.__get__(None, type(Probe))
 RESULT = getter(Probe, "__bases__")[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11114,7 +11496,8 @@ getter = type.__getattribute__.__get__(None, type(Probe))
 RESULT = getter(Probe, "__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11147,7 +11530,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11170,7 +11554,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11203,7 +11588,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11226,7 +11612,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11249,7 +11636,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11282,7 +11670,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11315,7 +11704,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11338,7 +11728,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11369,7 +11760,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11392,7 +11784,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(Probe, name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11423,7 +11816,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11446,7 +11840,8 @@ name = Sneaky("__mro__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11477,7 +11872,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11500,7 +11896,8 @@ name = Sneaky("__bases__")
 RESULT = getter(Probe, name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11531,7 +11928,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11554,7 +11952,8 @@ name = Sneaky("__base__")
 RESULT = getter(Probe, name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11587,7 +11986,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11610,7 +12010,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_subclasses_probe>",
@@ -11643,7 +12044,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11666,7 +12068,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_mro_probe>",
@@ -11699,7 +12102,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11722,7 +12126,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_bases_probe>",
@@ -11755,7 +12160,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11778,7 +12184,8 @@ key = Sneaky("name")
 RESULT = getter(Probe, **{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_type_getattribute_class_base_probe>",
@@ -11796,7 +12203,8 @@ getter = type.__getattribute__.__get__(Probe, type(Probe))
 RESULT = getter("__subclasses__")()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -11814,7 +12222,8 @@ getter = type.__getattribute__.__get__(Probe, type(Probe))
 RESULT = getter("__mro__")[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -11832,7 +12241,8 @@ getter = type.__getattribute__.__get__(Probe, type(Probe))
 RESULT = getter("__bases__")[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -11850,7 +12260,8 @@ getter = type.__getattribute__.__get__(Probe, type(Probe))
 RESULT = getter("__base__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -11883,7 +12294,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -11916,7 +12328,8 @@ name = Sneaky("__mro__")
 RESULT = getter(name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -11949,7 +12362,8 @@ name = Sneaky("__bases__")
 RESULT = getter(name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -11982,7 +12396,8 @@ name = Sneaky("__base__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12005,7 +12420,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -12028,7 +12444,8 @@ name = Sneaky("__mro__")
 RESULT = getter(name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -12051,7 +12468,8 @@ name = Sneaky("__bases__")
 RESULT = getter(name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -12074,7 +12492,8 @@ name = Sneaky("__base__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12105,7 +12524,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -12136,7 +12556,8 @@ name = Sneaky("__mro__")
 RESULT = getter(name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -12167,7 +12588,8 @@ name = Sneaky("__bases__")
 RESULT = getter(name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -12198,7 +12620,8 @@ name = Sneaky("__base__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12221,7 +12644,8 @@ name = Sneaky("__subclasses__")
 RESULT = getter(name=name)()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -12244,7 +12668,8 @@ name = Sneaky("__mro__")
 RESULT = getter(name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -12267,7 +12692,8 @@ name = Sneaky("__bases__")
 RESULT = getter(name=name)[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -12290,7 +12716,8 @@ name = Sneaky("__base__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12323,7 +12750,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -12356,7 +12784,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -12389,7 +12818,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -12422,7 +12852,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12445,7 +12876,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__subclasses__"})()
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_type_getattribute_class_subclasses_probe>",
@@ -12468,7 +12900,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__mro__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_type_getattribute_class_mro_probe>",
@@ -12491,7 +12924,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__bases__"})[0]
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_type_getattribute_class_bases_probe>",
@@ -12514,7 +12948,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__base__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_bound_type_getattribute_class_base_probe>",
@@ -12531,7 +12966,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter("__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -12548,7 +12984,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter("__spec__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -12565,7 +13002,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter("__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -12582,7 +13020,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter(name="__loader__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_keyword_probe>",
@@ -12599,7 +13038,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter(name="__spec__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_keyword_probe>",
@@ -12616,7 +13056,8 @@ getter = type(math).__getattribute__.__get__(math, type(math))
 RESULT = getter(name="__dict__")
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_keyword_probe>",
@@ -12634,7 +13075,8 @@ key = "name"
 RESULT = getter(**{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_loader_keyword_key_probe>",
@@ -12652,7 +13094,8 @@ key = "name"
 RESULT = getter(**{key: "__spec__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_spec_keyword_key_probe>",
@@ -12670,7 +13113,8 @@ key = "name"
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<descriptor_rebound_module_type_bound_getattribute_module_dict_keyword_key_probe>",
@@ -12702,7 +13146,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -12732,7 +13177,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -12762,7 +13208,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -12784,7 +13231,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -12806,7 +13254,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__spec__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -12836,7 +13285,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -12866,7 +13316,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -12888,7 +13339,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__loader__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -12910,7 +13362,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -12942,7 +13395,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__spec__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -12972,7 +13426,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -13002,7 +13457,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_positional_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -13024,7 +13480,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_positional_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -13056,7 +13513,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<stateful_str_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -13078,7 +13536,8 @@ name = Sneaky("__loader__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_module_type_bound_getattribute_module_loader_probe>",
@@ -13100,7 +13559,8 @@ name = Sneaky("__spec__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_module_type_bound_getattribute_module_spec_probe>",
@@ -13122,7 +13582,8 @@ name = Sneaky("__dict__")
 RESULT = getter(name=name)
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
@@ -13144,7 +13605,8 @@ key = Sneaky("name")
 RESULT = getter(**{key: "__dict__"})
 """
     with pytest.raises(AttributeError):
-        interp.run(
+        run_raises(
+            interp,
             source,
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",

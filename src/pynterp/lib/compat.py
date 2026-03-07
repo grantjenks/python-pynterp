@@ -247,6 +247,7 @@ def _patch_concurrent_futures_interpreter_worker_context(module: ModuleType) -> 
     if not _PY_CALLABLE(prepare):
         return
     if not _PY_GETATTR(prepare, "__pynterp_userfunction_task_adapter__", False):
+
         def prepare_wrapper(cls: Any, initializer: Any, initargs: Any):
             def resolve_task(fn: Any, args: Any, kwargs: Any):
                 serialized = _serialize_user_function_target(fn)

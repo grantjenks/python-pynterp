@@ -6,6 +6,7 @@ import builtins
 import collections
 import collections.abc
 import copy
+import dataclasses
 import functools
 import importlib.metadata as importlib_metadata
 import inspect
@@ -42,6 +43,7 @@ SAFE_STDLIB_MODULES: dict[str, ModuleType] = {
     "collections": collections,
     "collections.abc": collections.abc,
     "copy": copy,
+    "dataclasses": dataclasses,
     "functools": functools,
     "importlib": _IMPORTLIB_PROXY,
     "importlib.metadata": importlib_metadata,
