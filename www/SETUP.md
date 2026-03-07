@@ -16,6 +16,8 @@ docker build --build-arg FLAG_VALUE='pynterp{local-test-flag}' -t pynterp-www ./
 docker run --rm -p 8080:8080 pynterp-www
 ```
 
+The local build can use your native Docker architecture. For the image you push to Cloud Run, build `linux/amd64` explicitly.
+
 Example requests:
 
 ```bash
@@ -45,12 +47,11 @@ The commands below assume:
 gcloud auth login
 gcloud --version
 
-export PROJECT_ID="pynterp-ctf-demo"
-export PROJECT_NAME="pynterp CTF Demo"
-export BILLING_ACCOUNT_ID="$(gcloud billing accounts list \
-  --filter='open=true' \
-  --format='value(name.basename())' \
-  | head -n 1)"
+gcloud billing accounts list
+read -rp 'Billing account ID: ' BILLING_ACCOUNT_ID
+
+export PROJECT_ID="pynterp-ctf-project"
+export PROJECT_NAME="pynterp CTF Project"
 
 export REGION="us-west1"
 export SERVICE="pynterp-ctf"
@@ -137,17 +138,9 @@ gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
   --role="roles/iam.serviceAccountUser"
 ```
 
-Grant the project roles needed to deploy the service:
+If your user is already a project `Owner` or `Editor`, that binding is the only extra IAM change required for this setup.
 
-```bash
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="user:${DEPLOYER_EMAIL}" \
-  --role="roles/run.sourceDeveloper"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="user:${DEPLOYER_EMAIL}" \
-  --role="roles/serviceusage.serviceUsageConsumer"
-```
+If your user is more restricted, grant the deployer the Cloud Run and Artifact Registry roles described in the Cloud Run IAM docs before continuing.
 
 ### 8. Add the egress deny firewall rule
 
@@ -176,6 +169,7 @@ read -rsp 'Flag value: ' FLAG_VALUE
 echo
 
 docker build \
+  --platform linux/amd64 \
   --build-arg FLAG_VALUE="$FLAG_VALUE" \
   -t "$IMAGE_URL" \
   ./www
@@ -186,6 +180,8 @@ docker push "$IMAGE_URL"
 ```
 
 This stores the flag in the built image. That is acceptable for this hobby setup, but it is not a secret-safe mechanism.
+
+The explicit `--platform linux/amd64` matters on Apple Silicon. Without it, Docker builds an `arm64` image locally and Cloud Run fails to start the container with an `exec format error`.
 
 ### 10. Deploy to Cloud Run
 
@@ -232,7 +228,52 @@ curl -X POST "$SERVICE_URL/run" \
 
 The app itself blocks imports by constructing `Interpreter(allowed_imports=set())`. The VPC and firewall setup is the outer network-control layer in case code escapes the interpreter sandbox.
 
-### 12. Map the custom domain
+### 12. Optional: verify outbound internet is blocked
+
+Create a temporary Cloud Run job that uses the same image, service account, VPC settings, and network tag, but runs a simple outbound HTTPS probe:
+
+```bash
+gcloud run jobs create "${SERVICE}-egress-probe" \
+  --image "$IMAGE_URL" \
+  --region="$REGION" \
+  --service-account="$RUNTIME_SA" \
+  --tasks=1 \
+  --parallelism=1 \
+  --max-retries=0 \
+  --task-timeout=30s \
+  --network="$NETWORK" \
+  --subnet="$SUBNET" \
+  --network-tags="$TAG" \
+  --vpc-egress=all-traffic \
+  --command=python \
+  --args=-c,"import urllib.request; urllib.request.urlopen('https://example.com/', timeout=5)"
+```
+
+Run it and expect the execution to fail:
+
+```bash
+gcloud run jobs execute "${SERVICE}-egress-probe" \
+  --region="$REGION" \
+  --wait || true
+```
+
+Then inspect the logs. A timeout or `Network is unreachable` result is the expected outcome.
+
+```bash
+gcloud logging read \
+  "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${SERVICE}-egress-probe\"" \
+  --limit=20
+```
+
+Clean up the temporary job afterward:
+
+```bash
+gcloud run jobs delete "${SERVICE}-egress-probe" \
+  --region="$REGION" \
+  --quiet
+```
+
+### 13. Map the custom domain
 
 Cloud Run domain mapping is still Preview and not recommended for production services, but it is the cheap option for this hobby setup.
 
@@ -241,6 +282,14 @@ Verify domain ownership:
 ```bash
 gcloud domains list-user-verified
 gcloud domains verify "$BASE_DOMAIN"
+```
+
+If the parent domain already appears in `gcloud domains list-user-verified`, you can skip `gcloud domains verify`.
+
+Make sure the beta command group is installed before creating the mapping:
+
+```bash
+gcloud components install beta --quiet
 ```
 
 Create the mapping:
@@ -261,6 +310,8 @@ gcloud beta run domain-mappings describe \
 ```
 
 Use the returned `resourceRecords` exactly as shown.
+
+After you add the returned DNS records at your registrar, wait for `gcloud beta run domain-mappings describe` to show both `Ready: True` and `CertificateProvisioned: True`. In practice, the HTTPS endpoint can still lag behind those control-plane states for a few more minutes before it starts serving normally.
 
 ## References
 
