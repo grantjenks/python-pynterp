@@ -299,6 +299,16 @@ print(total)</textarea>
       node.textContent = value && value.length ? value : emptyText;
     }
 
+    function summarizeHttpError(response, text) {
+      if (response.status === 504) {
+        return text || "upstream request timeout";
+      }
+      if (text) {
+        return `HTTP ${response.status}: ${text}`;
+      }
+      return `HTTP ${response.status} ${response.statusText}`.trim();
+    }
+
     async function runCode(event) {
       event.preventDefault();
       submit.disabled = true;
@@ -314,11 +324,23 @@ print(total)</textarea>
           body: JSON.stringify({ code: code.value }),
         });
 
-        const payload = await response.json();
-        fill(stdout, payload.stdout || "", "(empty)");
-        fill(stderr, payload.stderr || "", "(empty)");
-        fill(error, payload.error || "", "(empty)");
-        setStatus(payload.ok ? "completed" : "completed with error", payload.ok ? "ok" : "fail");
+        const contentType = response.headers.get("content-type") || "";
+        const rawBody = await response.text();
+        const isJson = contentType.includes("application/json");
+        const payload = isJson && rawBody ? JSON.parse(rawBody) : null;
+
+        if (payload) {
+          fill(stdout, payload.stdout || "", "(empty)");
+          fill(stderr, payload.stderr || "", "(empty)");
+          fill(error, payload.error || "", "(empty)");
+          setStatus(payload.ok ? "completed" : "completed with error", payload.ok ? "ok" : "fail");
+          return;
+        }
+
+        fill(stdout, "", "(empty)");
+        fill(stderr, "", "(empty)");
+        fill(error, summarizeHttpError(response, rawBody), "(empty)");
+        setStatus(response.status === 504 ? "timed out" : "request failed", "fail");
       } catch (err) {
         fill(stdout, "", "(empty)");
         fill(stderr, "", "(empty)");
