@@ -12,6 +12,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
         "pynterp==0.1.*"
 
 COPY app.py /app/
+COPY templates /app/templates
 
 ARG FLAG_VALUE
 
