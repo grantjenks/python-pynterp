@@ -12,7 +12,9 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+  "flask>=3.1.2",
   "ipython>=8.38.0",
+  "poethepoet>=0.41.0",
   "pytest>=8.4.0",
   "ruff>=0.13.0",
 ]
@@ -30,6 +32,11 @@ include = [
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.poe.tasks.www]
+help = "Run the local Flask UI for the CTF app"
+cmd = "flask --app www.app run --debug --port 8080"
+env = { PYTHONPATH = "src" }
 
 [tool.pytest.ini_options]
 addopts = "-ra"

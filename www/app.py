@@ -2,7 +2,7 @@ import contextlib
 import io
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 from pynterp import Interpreter
 
@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.get("/")
 def index():
-    return jsonify({"ok": True, "service": "pynterp-www"})
+    return render_template("index.html")
 
 
 @app.post("/run")
