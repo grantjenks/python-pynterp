@@ -20,20 +20,6 @@ HAS_INTERPRETER_POOL_EXECUTOR = hasattr(concurrent.futures, "InterpreterPoolExec
 if HAS_TEMPLATE_STR:
     import string.templatelib as templatelib
 
-
-def _runtime_exec_explicit_namespace_annotation_keys() -> tuple[bool, bool, bool]:
-    globals_dict: dict[str, object] = {}
-    locals_dict: dict[str, object] = {}
-    exec("'docstring'\nx: int = 5\n", globals_dict, locals_dict)
-    return (
-        "__annotate__" in globals_dict,
-        "__annotate__" in locals_dict,
-        "__annotations__" in locals_dict,
-    )
-
-
-RUNTIME_EXEC_EXPLICIT_NS_ANNOTATION_KEYS = _runtime_exec_explicit_namespace_annotation_keys()
-
 EXPECTED_KITCHEN_RESULT = {
     "flag": "module",
     "sqrt": 9.0,
@@ -352,7 +338,7 @@ RESULT = run()
     }
     interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
     interpreter.run(source, env=env, filename="<test_exec_builtin_explicit_namespaces>")
-    assert env["RESULT"] == (RUNTIME_EXEC_EXPLICIT_NS_ANNOTATION_KEYS, {"x": int}, 5)
+    assert env["RESULT"] == ((False, True, False), {"x": int}, 5)
 
 
 def test_eval_builtin_uses_interpreted_function_scope_locals() -> None:

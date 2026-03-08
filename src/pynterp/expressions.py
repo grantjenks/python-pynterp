@@ -24,6 +24,30 @@ except ImportError:  # pragma: no cover - exercised only on older runtimes.
 
 
 class ExpressionMixin:
+    def _maybe_install_exec_annotation_thunk(
+        self,
+        locals_ns: Any,
+        *,
+        had_annotations_before: bool,
+    ) -> None:
+        if had_annotations_before:
+            return
+        if not isinstance(locals_ns, dict):
+            return
+        if "__annotate__" in locals_ns or "__annotations__" not in locals_ns:
+            return
+
+        annotations = locals_ns.get("__annotations__")
+        if not isinstance(annotations, dict):
+            return
+        frozen_annotations = dict(annotations)
+
+        def __annotate__(format, /):
+            return dict(frozen_annotations)
+
+        locals_ns["__annotate__"] = __annotate__
+        del locals_ns["__annotations__"]
+
     def _maybe_fix_typing_runtime_module(self, func: Any, result: Any, scope: RuntimeScope) -> Any:
         if getattr(func, "__module__", None) != "typing":
             return result
@@ -182,15 +206,37 @@ class ExpressionMixin:
                 if source_is_text and "closure" in kwargs:
                     return _NO_SPECIAL_CALL
                 exec_source = self._compile_exec_eval_source(args[0], "exec")
-                return builtins.exec(
+                locals_ns = self._default_exec_eval_locals(scope)
+                had_annotations_before = (
+                    isinstance(locals_ns, dict) and "__annotations__" in locals_ns
+                )
+                builtins.exec(
                     exec_source,
                     scope.globals,
-                    self._default_exec_eval_locals(scope),
+                    locals_ns,
                     **kwargs,
                 )
+                self._maybe_install_exec_annotation_thunk(
+                    locals_ns,
+                    had_annotations_before=had_annotations_before,
+                )
+                return None
             if source_is_text and "closure" not in kwargs:
                 exec_source = self._compile_exec_eval_source(args[0], "exec")
-                return builtins.exec(exec_source, *args[1:], **kwargs)
+                exec_globals = kwargs.get("globals", args[1] if len(args) > 1 else None)
+                exec_locals = kwargs.get(
+                    "locals",
+                    args[2] if len(args) > 2 else exec_globals,
+                )
+                had_annotations_before = (
+                    isinstance(exec_locals, dict) and "__annotations__" in exec_locals
+                )
+                builtins.exec(exec_source, *args[1:], **kwargs)
+                self._maybe_install_exec_annotation_thunk(
+                    exec_locals,
+                    had_annotations_before=had_annotations_before,
+                )
+                return None
             return _NO_SPECIAL_CALL
 
         return _NO_SPECIAL_CALL
