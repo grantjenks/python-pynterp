@@ -5,11 +5,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG PYNTERP_VERSION=0.1.2
+
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir \
         "flask==3.*" \
         "gunicorn==25.*" \
-        "pynterp==0.1.*"
+        "pynterp==${PYNTERP_VERSION}"
 
 COPY app.py /app/
 COPY templates /app/templates
