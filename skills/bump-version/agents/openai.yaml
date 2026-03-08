@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bump Version"
+  short_description: "Release a new pynterp version"
+  default_prompt: "Use $bump-version to bump pynterp, release it, and redeploy www."
