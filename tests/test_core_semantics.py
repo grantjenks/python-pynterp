@@ -2267,51 +2267,35 @@ RESULT = box.capture(self="keyword")
     assert env["RESULT"] == ("bound", "keyword")
 
 
-def test_attr_guard_allows_traceback_frame_but_keeps_frame_pivots_blocked(run_interpreter):
+def test_attr_guard_blocks_traceback_frame(run_interpreter):
     source = """
 try:
     1 / 0
 except Exception as exc:
     tb = exc.__traceback__
-    frame = tb.tb_frame
     try:
-        _ = frame.f_globals
-    except Exception as blocked_globals_exc:
-        blocked_globals_info = (
-            type(blocked_globals_exc).__name__,
-            str(blocked_globals_exc),
+        _ = tb.tb_frame
+    except Exception as blocked_tb_frame_exc:
+        blocked_tb_frame_info = (
+            type(blocked_tb_frame_exc).__name__,
+            str(blocked_tb_frame_exc),
         )
     else:
-        blocked_globals_info = None
+        blocked_tb_frame_info = None
 
-    try:
-        _ = frame.f_builtins
-    except Exception as blocked_builtins_exc:
-        blocked_builtins_info = (
-            type(blocked_builtins_exc).__name__,
-            str(blocked_builtins_exc),
-        )
-    else:
-        blocked_builtins_info = None
-
-    RESULT = (tb is not None, frame is not None, blocked_globals_info, blocked_builtins_info)
+    RESULT = (tb is not None, blocked_tb_frame_info)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (
         True,
-        True,
         (
             "AttributeError",
-            "attribute access to 'f_globals' is blocked in this environment",
-        ),
-        (
-            "AttributeError",
-            "attribute access to 'f_builtins' is blocked in this environment",
+            "attribute access to 'tb_frame' is blocked in this environment",
         ),
     )
 
 
-def test_attr_guard_allows_traceback_chain_navigation_with_tb_next(run_interpreter):
+def test_attr_guard_blocks_traceback_chain_navigation_with_tb_next(run_interpreter):
     source = """
 def boom():
     1 / 0
@@ -2323,122 +2307,108 @@ try:
     run()
 except Exception as exc:
     tb = exc.__traceback__
-    depth = 0
-    while tb is not None:
-        depth += 1
-        tb = tb.tb_next
-    RESULT = depth
+    try:
+        _ = tb.tb_next
+    except Exception as blocked_tb_next_exc:
+        RESULT = (type(blocked_tb_next_exc).__name__, str(blocked_tb_next_exc))
 """
     env = run_interpreter(source)
-    assert env["RESULT"] >= 1
+    assert env["RESULT"] == (
+        "AttributeError",
+        "attribute access to 'tb_next' is blocked in this environment",
+    )
 
 
-def test_attr_guard_allows_coroutine_frame_and_f_back(run_interpreter):
+def test_attr_guard_blocks_coroutine_frame(run_interpreter):
     source = """
 async def compute():
     return 1
 
 co = compute()
-frame = co.cr_frame
 try:
-    _ = frame.f_globals
+    _ = co.cr_frame
 except Exception as blocked:
     BLOCKED = (type(blocked).__name__, str(blocked))
 else:
     BLOCKED = None
 co.close()
-RESULT = (frame is not None, frame.f_back is None, BLOCKED)
+RESULT = BLOCKED
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (
-        True,
-        True,
-        (
-            "AttributeError",
-            "attribute access to 'f_globals' is blocked in this environment",
-        ),
+        "AttributeError",
+        "attribute access to 'cr_frame' is blocked in this environment",
     )
 
 
-def test_attr_guard_allows_coroutine_frame_in_generator_execution_path(run_interpreter):
+def test_attr_guard_blocks_coroutine_frame_in_generator_execution_path(run_interpreter):
     source = """
 async def compute():
     return 1
 
 def run():
     co = compute()
-    frame = co.cr_frame
     try:
-        _ = frame.f_builtins
+        _ = co.cr_frame
     except Exception as blocked:
         blocked_info = (type(blocked).__name__, str(blocked))
     else:
         blocked_info = None
     co.close()
-    yield (frame is not None, frame.f_back is None, blocked_info)
+    yield blocked_info
 
 RESULT = list(run())
 """
     env = run_interpreter(source)
     assert env["RESULT"] == [
         (
-            True,
-            True,
-            (
-                "AttributeError",
-                "attribute access to 'f_builtins' is blocked in this environment",
-            ),
+            "AttributeError",
+            "attribute access to 'cr_frame' is blocked in this environment",
         )
     ]
 
 
-def test_attr_guard_allows_async_generator_frame_but_keeps_frame_pivots_blocked(run_interpreter):
+def test_attr_guard_blocks_async_generator_frame(run_interpreter):
     source = """
 async def produce():
     yield 1
 
 ag = produce()
-frame = ag.ag_frame
 try:
-    _ = frame.f_globals
+    _ = ag.ag_frame
 except Exception as blocked:
     blocked_info = (type(blocked).__name__, str(blocked))
 else:
     blocked_info = None
 
-RESULT = (frame is not None, ag.ag_running, blocked_info)
+RESULT = (ag.ag_running, blocked_info)
 """
     env = run_interpreter(source)
     assert env["RESULT"] == (
-        True,
         False,
         (
             "AttributeError",
-            "attribute access to 'f_globals' is blocked in this environment",
+            "attribute access to 'ag_frame' is blocked in this environment",
         ),
     )
 
 
-def test_async_generator_frame_generator_exposes_ag_code_alias(run_interpreter):
-    result_expr = (
-        "frame.f_generator.ag_code.co_name" if HAS_FRAME_F_GENERATOR else "ag.ag_code.co_name"
-    )
-    source = f"""
+def test_attr_guard_blocks_async_generator_ag_code(run_interpreter):
+    source = """
 async def gen():
     yield 1
 
 ag = gen()
-step = ag.asend(None)
 try:
-    _ = step.send(None)
-except Exception:
-    pass
-frame = ag.ag_frame
-RESULT = {result_expr}
+    _ = ag.ag_code
+except Exception as blocked:
+    RESULT = (type(blocked).__name__, str(blocked))
 """
     env = run_interpreter(source)
-    assert isinstance(env["RESULT"], str)
-    assert "gen" in env["RESULT"]
+    assert env["RESULT"] == (
+        "AttributeError",
+        "attribute access to 'ag_code' is blocked in this environment",
+    )
 
 
 def test_attr_guard_blocks_class_bases_and_subclasses(run_interpreter):

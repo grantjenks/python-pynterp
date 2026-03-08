@@ -13654,3 +13654,66 @@ RESULT = getter(**{key: "__dict__"})
             env=env,
             filename="<str_override_keyword_key_descriptor_rebound_module_type_bound_getattribute_module_dict_probe>",
         )
+
+
+def test_traceback_code_object_rehydration_cannot_recover_importer_self(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{sandbox-escape}")
+    source = f"""
+F = type(getattr)
+false = frozenset().__contains__
+
+try:
+    getattr(0, 1)
+except Exception as exc:
+    tb = exc.__traceback__
+    i = 0
+    while i < 7:
+        tb = tb.tb_next
+        i += 1
+    norm_code = tb.tb_frame.f_code
+
+try:
+    getattr(0, "__self__")
+except Exception as exc:
+    tb = exc.__traceback__
+    i = 0
+    while i < 6:
+        tb = tb.tb_next
+        i += 1
+    safe_code = tb.tb_frame.f_code
+    guard_code = tb.tb_next.tb_frame.f_code
+
+norm = F(norm_code, {{}})
+guard = F(
+    guard_code,
+    {{
+        "_normalize_attr_name": norm,
+        "_allows_func_attr": false,
+        "is_blocked_attr": false,
+    }},
+)
+unsafe_getattr = F(
+    safe_code,
+    {{
+        "_normalize_attr_name": norm,
+        "_guard_attr_name_for_object": guard,
+    }},
+)
+
+host = unsafe_getattr(__import__, "__self__")
+host.allowed_imports = None
+
+import builtins
+
+RESULT = builtins.open({str(flag_path)!r}).read()
+"""
+    with pytest.raises((AttributeError, ImportError, TypeError)):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<traceback_code_object_rehydration_importer_self_probe>",
+        )
