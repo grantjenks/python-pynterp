@@ -12,7 +12,11 @@ This directory contains a minimal Flask app that installs `pynterp` from PyPI in
 From the repo root:
 
 ```bash
-docker build --build-arg FLAG_VALUE='pynterp{local-test-flag}' -t pynterp-www ./www
+set -a
+. ./.env
+set +a
+
+docker build --build-arg FLAG_VALUE="$FLAG_VALUE" -t pynterp-www ./www
 docker run --rm -p 8080:8080 pynterp-www
 ```
 
@@ -162,19 +166,18 @@ Notes:
 
 ### 9. Build the image with the flag
 
-Prompt locally for the flag value, build the image, and push it:
+Load the repo-root `.env`, build the image, and push it:
 
 ```bash
-read -rsp 'Flag value: ' FLAG_VALUE
-echo
+set -a
+. ./.env
+set +a
 
 docker build \
   --platform linux/amd64 \
   --build-arg FLAG_VALUE="$FLAG_VALUE" \
   -t "$IMAGE_URL" \
   ./www
-
-unset FLAG_VALUE
 
 docker push "$IMAGE_URL"
 ```
