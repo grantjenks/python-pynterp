@@ -65,7 +65,7 @@ If a tag run fails before PyPI publication, fix the issue on `main` and decide w
 
 ## Wait for PyPI
 
-Verify the live index, not just GitHub Actions:
+Verify the live index and package installability, not just GitHub Actions:
 
 ```bash
 python3 - <<'PY'
@@ -75,9 +75,12 @@ with urllib.request.urlopen("https://pypi.org/pypi/pynterp/json", timeout=20) as
 print(data["info"]["version"])
 print("X.Y.Z" in data["releases"])
 PY
+
+docker run --rm python:3.14-slim sh -lc \
+  'python -m pip install --no-cache-dir --dry-run "pynterp==X.Y.Z"'
 ```
 
-Proceed only when the reported version is `X.Y.Z` and the release exists.
+Proceed only when the reported version is `X.Y.Z`, the release exists, and the dry-run install succeeds. If the dry-run still fails with `No matching distribution found`, wait briefly and retry; PyPI publication can become visible before a fresh pip install resolves the new version.
 
 ## Redeploy www
 
@@ -89,7 +92,7 @@ Prepare Docker auth:
 gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
 ```
 
-Build the image from the repo root. Source `.env` inside the shell so `FLAG_VALUE` does not get printed separately:
+Build the image from the repo root. Source `.env` inside the shell so `FLAG_VALUE` does not get printed separately. The current Dockerfile still expands `FLAG_VALUE` in a `RUN` step, so the local Docker build log can reveal it; treat the terminal output as sensitive unless the build flow is changed:
 
 ```bash
 bash -lc 'set -a; . ./.env; set +a; docker build \
