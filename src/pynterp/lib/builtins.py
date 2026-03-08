@@ -2,7 +2,7 @@ import builtins
 import sys
 from typing import Any, Callable
 
-from .guards import safe_delattr, safe_getattr, safe_hasattr, safe_setattr
+from .guards import safe_delattr, safe_getattr, safe_hasattr, safe_setattr, safe_vars
 
 _COMMON_BUILTIN_NAMES = (
     "ArithmeticError",
@@ -152,6 +152,7 @@ def make_safe_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
     out["hasattr"] = safe_hasattr
     out["setattr"] = safe_setattr
     out["delattr"] = safe_delattr
+    out["vars"] = safe_vars
     out["__import__"] = importer
     return out
 

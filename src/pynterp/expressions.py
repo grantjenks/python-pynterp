@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterator
 from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
-from .lib.guards import safe_getattr
+from .lib.guards import safe_getattr, safe_vars
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
 
@@ -152,9 +152,9 @@ class ExpressionMixin:
                 return builtins.locals(*args, **kwargs)
             return self._default_exec_eval_locals(scope)
 
-        if func is builtins.vars:
+        if func is builtins.vars or func is safe_vars:
             if args or kwargs:
-                return builtins.vars(*args, **kwargs)
+                return func(*args, **kwargs)
             return self._default_exec_eval_locals(scope)
 
         if func is builtins.dir:

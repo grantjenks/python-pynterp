@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import inspect
 from typing import Any
 
@@ -13,6 +14,7 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "__closure__",
         "__code__",
         "__dict__",
+        "__func__",
         "__getattr__",
         "__getattribute__",
         "__globals__",
@@ -103,13 +105,27 @@ def is_blocked_attr(name: str) -> bool:
     return name in _BLOCKED_ATTR_NAMES
 
 
-def guard_attr_name(name: Any) -> str:
+def _allows_func_attr(obj: Any) -> bool:
+    try:
+        from ..functions import BoundMethod
+    except ImportError:  # pragma: no cover - defensive fallback
+        return False
+    return isinstance(obj, BoundMethod)
+
+
+def _guard_attr_name_for_object(obj: Any, name: Any) -> str:
     normalized_name = _normalize_attr_name(name)
+    if normalized_name == "__func__" and _allows_func_attr(obj):
+        return normalized_name
     if is_blocked_attr(normalized_name):
         raise AttributeError(
             f"attribute access to {normalized_name!r} is blocked in this environment"
         )
     return normalized_name
+
+
+def guard_attr_name(name: Any) -> str:
+    return _guard_attr_name_for_object(None, name)
 
 
 def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
@@ -156,7 +172,9 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
                     attr_name = args[1]
 
             if attr_name is not _MISSING:
-                attr_name = guard_attr_name(attr_name)
+                attr_name = _guard_attr_name_for_object(
+                    None if target is _MISSING else target, attr_name
+                )
                 if name_kwarg_key is not _MISSING:
                     call_kwargs = dict(kwargs)
                     if type(name_kwarg_key) is not str or name_kwarg_key != "name":
@@ -186,15 +204,28 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
         if generic_generator_code is not _MISSING:
             return generic_generator_code
 
-    name = guard_attr_name(name)
+    name = _guard_attr_name_for_object(obj, name)
     if default:
         return getattr(obj, name, *default)
     return getattr(obj, name)
 
 
 def safe_hasattr(obj: Any, name: str) -> bool:
-    name = guard_attr_name(name)
+    name = _guard_attr_name_for_object(obj, name)
     return hasattr(obj, name)
+
+
+def safe_vars(*args: Any) -> Any:
+    if not args:
+        return builtins.vars()
+    mapping = builtins.vars(*args)
+    if not hasattr(mapping, "items"):
+        return mapping
+    return {
+        key: value
+        for key, value in mapping.items()
+        if not isinstance(key, str) or not is_blocked_attr(_normalize_attr_name(key))
+    }
 
 
 def safe_setattr(obj: Any, name: str, value: Any) -> None:

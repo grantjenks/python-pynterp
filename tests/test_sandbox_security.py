@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pynterp import Interpreter
@@ -2214,6 +2216,47 @@ RESULT = func.__globals__["__builtins__"]
 """
     with pytest.raises(AttributeError):
         run_raises(interp, source, env=env, filename="<import_callable_func_globals_probe>")
+
+
+def test_import_callable_func_cannot_be_rebound_with_forged_self(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{sandbox-escape}")
+    source = f"""
+f = __import__.__func__
+
+class P:
+    allow_relative_imports = False
+    def _is_allowed_module(self, name): return True
+    def _adapt_runtime_value(self, value): return value
+
+b = f(P(), "builtins")
+RESULT = b.open({str(flag_path)!r}).read()
+"""
+    with pytest.raises(AttributeError):
+        run_raises(interp, source, env=env, filename="<import_callable_func_forged_self_probe>")
+
+
+def test_import_callable_func_descriptor_cannot_be_recovered_via_vars(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{sandbox-escape}")
+    source = f"""
+descriptor = vars(type(__import__))["__func__"]
+f = descriptor.__get__(__import__, type(__import__))
+
+class P:
+    allow_relative_imports = False
+    def _is_allowed_module(self, name): return True
+    def _adapt_runtime_value(self, value): return value
+
+b = f(P(), "builtins")
+RESULT = b.open({str(flag_path)!r}).read()
+"""
+    with pytest.raises(KeyError):
+        run_raises(interp, source, env=env, filename="<import_callable_func_vars_descriptor_probe>")
 
 
 def test_object_getattribute_cannot_reach_import_callable_func_globals():
