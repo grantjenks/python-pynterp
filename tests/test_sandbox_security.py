@@ -13717,3 +13717,37 @@ RESULT = builtins.open({str(flag_path)!r}).read()
             env=env,
             filename="<traceback_code_object_rehydration_importer_self_probe>",
         )
+
+
+def test_safe_builtin_wrapper_call_attribute_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            "RESULT = getattr.__call__",
+            env=env,
+            filename="<safe_builtin_wrapper_call_attr_probe>",
+        )
+
+
+def test_signature_from_callable_eval_str_cannot_mutate_safe_getattr_annotations(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{signature-eval-escape}")
+    source = f"""
+def h(y: int):
+    pass
+
+Sig = type(h.__signature__)
+f = h.builtins["getattr"]
+f.__annotations__ = {{"name": "open({str(flag_path)!r}).read()"}}
+RESULT = Sig.from_callable(f, eval_str=True).parameters["name"].annotation
+"""
+    result = interp.run(
+        source,
+        env=env,
+        filename="<signature_from_callable_eval_str_safe_getattr_annotation_probe>",
+    )
+    assert isinstance(result.exception, AttributeError)

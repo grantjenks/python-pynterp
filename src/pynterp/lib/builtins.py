@@ -1,4 +1,5 @@
 import builtins
+import inspect
 import sys
 from typing import Any, Callable
 
@@ -136,6 +137,46 @@ _COMMON_BUILTIN_NAMES = (
 )
 
 
+class SafeBuiltinCallableBase:
+    __slots__ = ()
+
+
+def _wrap_safe_builtin(name: str, func: Callable[..., Any]) -> SafeBuiltinCallableBase:
+    class SafeBuiltinCallable(SafeBuiltinCallableBase):
+        __slots__ = ("__name__", "__qualname__", "__doc__", "__signature__")
+
+        def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            raise AttributeError(f"{type(self).__name__!r} object is immutable")
+
+        def __delattr__(self, name: str) -> None:
+            raise AttributeError(f"{type(self).__name__!r} object is immutable")
+
+    wrapped = SafeBuiltinCallable()
+    object.__setattr__(wrapped, "__name__", name)
+    object.__setattr__(wrapped, "__qualname__", name)
+    object.__setattr__(wrapped, "__doc__", getattr(func, "__doc__", None))
+    object.__setattr__(wrapped, "__signature__", inspect.signature(func))
+    return wrapped
+
+
+SAFE_GETATTR = _wrap_safe_builtin("getattr", safe_getattr)
+SAFE_HASATTR = _wrap_safe_builtin("hasattr", safe_hasattr)
+SAFE_SETATTR = _wrap_safe_builtin("setattr", safe_setattr)
+SAFE_DELATTR = _wrap_safe_builtin("delattr", safe_delattr)
+SAFE_VARS = _wrap_safe_builtin("vars", safe_vars)
+
+
+def is_safe_builtin_callable(value: Any, name: str | None = None) -> bool:
+    if not isinstance(value, SafeBuiltinCallableBase):
+        return False
+    if name is None:
+        return True
+    return getattr(value, "__name__", None) == name
+
+
 def _resolve_builtin(name: str) -> Any:
     value = getattr(builtins, name, None)
     if value is not None:
@@ -148,11 +189,11 @@ def _resolve_builtin(name: str) -> Any:
 def make_safe_builtins(importer: Callable[..., Any]) -> dict[str, Any]:
     """Build builtins dictionary with guard-railed reflection helpers."""
     out = {name: _resolve_builtin(name) for name in _COMMON_BUILTIN_NAMES}
-    out["getattr"] = safe_getattr
-    out["hasattr"] = safe_hasattr
-    out["setattr"] = safe_setattr
-    out["delattr"] = safe_delattr
-    out["vars"] = safe_vars
+    out["getattr"] = SAFE_GETATTR
+    out["hasattr"] = SAFE_HASATTR
+    out["setattr"] = SAFE_SETATTR
+    out["delattr"] = SAFE_DELATTR
+    out["vars"] = SAFE_VARS
     out["__import__"] = importer
     return out
 

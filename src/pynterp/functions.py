@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 from .code import ModuleCode, ScopeInfo
 from .common import NO_DEFAULT, Cell
+from .host_exec import safe_host_exec
 
 if TYPE_CHECKING:
     from .main import Interpreter
@@ -189,10 +190,8 @@ def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:
     module = ast.Module(body=[prepared_node], type_ignores=[])
     ast.fix_missing_locations(module)
 
-    namespace = dict(func.globals)
-    namespace.setdefault("__builtins__", func.builtins)
     compiled = compile(module, func.code.filename, "exec")
-    exec(compiled, namespace, namespace)
+    namespace = safe_host_exec(compiled, func.globals, func.builtins, copy_globals=True)
     return namespace[prepared_node.name]
 
 

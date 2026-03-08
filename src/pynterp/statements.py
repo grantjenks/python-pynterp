@@ -18,6 +18,7 @@ from .common import (
     ReturnSignal,
 )
 from .functions import UserFunction
+from .host_exec import safe_host_eval, safe_host_exec
 from .scopes import ClassBodyScope, FunctionScope, RuntimeScope
 from .symtable_utils import _contains_yield
 
@@ -173,14 +174,16 @@ class StatementMixin:
         self, scope: RuntimeScope, factory: Any, /, *args: Any, **kwargs: Any
     ) -> Any:
         # Run typing factories under interpreted globals so `__module__` matches the interpreted module.
-        return eval(
+        return safe_host_eval(
             "__pynterp_factory(*__pynterp_args, **__pynterp_kwargs)",
             scope.globals,
+            scope.builtins,
             {
                 "__pynterp_factory": factory,
                 "__pynterp_args": args,
                 "__pynterp_kwargs": kwargs,
             },
+            copy_globals=True,
         )
 
     def _eval_class_bases(
@@ -299,7 +302,7 @@ class StatementMixin:
                     "        pass\n"
                     "    return __pynterp_tmp.__type_params__[0]\n"
                 )
-                exec(source, helper_globals)
+                safe_host_exec(source, helper_globals, scope.builtins)
                 return helper_globals["__pynterp_make_typevar"](*args)
 
             kwargs: Dict[str, Any] = {}

@@ -11,6 +11,7 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "__base__",
         "__bases__",
         "__builtins__",
+        "__call__",
         "__closure__",
         "__code__",
         "__dict__",

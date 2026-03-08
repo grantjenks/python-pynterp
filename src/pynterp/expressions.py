@@ -7,6 +7,8 @@ from typing import Any, Callable, Dict, Iterator
 from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
+from .host_exec import safe_host_eval, safe_host_exec
+from .lib.builtins import is_safe_builtin_callable
 from .lib.guards import safe_getattr, safe_vars
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
@@ -176,7 +178,7 @@ class ExpressionMixin:
                 return builtins.locals(*args, **kwargs)
             return self._default_exec_eval_locals(scope)
 
-        if func is builtins.vars or func is safe_vars:
+        if func is builtins.vars or func is safe_vars or is_safe_builtin_callable(func, "vars"):
             if args or kwargs:
                 return func(*args, **kwargs)
             return self._default_exec_eval_locals(scope)
@@ -191,8 +193,11 @@ class ExpressionMixin:
                 return _NO_SPECIAL_CALL
             eval_source = self._compile_exec_eval_source(args[0], "eval")
             if len(args) == 1 and "globals" not in kwargs and "locals" not in kwargs:
-                return builtins.eval(
-                    eval_source, scope.globals, self._default_exec_eval_locals(scope)
+                return safe_host_eval(
+                    eval_source,
+                    scope.globals,
+                    scope.builtins,
+                    self._default_exec_eval_locals(scope),
                 )
             if eval_source is not args[0]:
                 return builtins.eval(eval_source, *args[1:], **kwargs)
@@ -210,9 +215,10 @@ class ExpressionMixin:
                 had_annotations_before = (
                     isinstance(locals_ns, dict) and "__annotations__" in locals_ns
                 )
-                builtins.exec(
+                safe_host_exec(
                     exec_source,
                     scope.globals,
+                    scope.builtins,
                     locals_ns,
                     **kwargs,
                 )
