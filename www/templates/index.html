@@ -116,11 +116,24 @@
       gap: 0.9rem;
     }
 
+    .toolbar {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+    }
+
+    .example-picker {
+      display: grid;
+      gap: 0.35rem;
+    }
+
     label {
       font-size: 0.95rem;
       color: var(--muted);
     }
 
+    select,
     textarea,
     pre {
       margin: 0;
@@ -131,6 +144,11 @@
       color: var(--text);
       font-size: 0.98rem;
       line-height: 1.55;
+    }
+
+    select {
+      padding: 0.8rem 1rem;
+      appearance: none;
     }
 
     textarea {
@@ -154,6 +172,13 @@
       flex-wrap: wrap;
     }
 
+    .button-row {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     button {
       appearance: none;
       border: 0;
@@ -163,6 +188,12 @@
       color: var(--button-text);
       cursor: pointer;
       font-size: 0.95rem;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
     }
 
     button:disabled {
@@ -227,6 +258,10 @@
         border-radius: 0.85rem;
       }
 
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
       .result-grid {
         grid-template-columns: 1fr;
       }
@@ -249,6 +284,18 @@
 
     <section class="panel">
       <form id="runner">
+        <div class="toolbar">
+          <div class="example-picker">
+            <label for="example">examples</label>
+            <select id="example" name="example">
+              <option value="">load an example and run it...</option>
+            </select>
+          </div>
+          <div class="button-row">
+            <button id="clear" type="button" class="secondary">clear</button>
+            <button id="submit" type="submit">run code</button>
+          </div>
+        </div>
         <label for="code">code</label>
         <textarea id="code" name="code" spellcheck="false">total = 0
 for value in [1, 2, 3]:
@@ -256,7 +303,6 @@ for value in [1, 2, 3]:
 
 print(total)</textarea>
         <div class="controls">
-          <button id="submit" type="submit">run code</button>
           <span id="status" class="status" data-tone="idle">ready</span>
         </div>
       </form>
@@ -283,12 +329,125 @@ print(total)</textarea>
 
   <script>
     const form = document.getElementById("runner");
+    const example = document.getElementById("example");
     const code = document.getElementById("code");
+    const clear = document.getElementById("clear");
     const submit = document.getElementById("submit");
     const status = document.getElementById("status");
     const stdout = document.getElementById("stdout");
     const stderr = document.getElementById("stderr");
     const error = document.getElementById("error");
+    const starterCode = code.value;
+    const examples = [
+      {
+        id: "starter",
+        label: "starter: loop and print",
+        code: starterCode,
+      },
+      {
+        id: "classes",
+        label: "feature: classes and methods",
+        code: `class Counter:
+    def __init__(self, start=0):
+        self.value = start
+
+    def bump(self):
+        self.value += 1
+        return self.value
+
+counter = Counter(10)
+print(counter.bump())
+print(counter.bump())`,
+      },
+      {
+        id: "match",
+        label: "feature: match and case",
+        code: `def describe(packet):
+    match packet:
+        case {"kind": "ping", "value": value} if value > 0:
+            return f"ping:{value}"
+        case [head, *tail]:
+            return (head, tail)
+        case _:
+            return "unknown"
+
+print(describe({"kind": "ping", "value": 3}))
+print(describe([1, 2, 3]))`,
+      },
+      {
+        id: "exceptions",
+        label: "feature: try and except",
+        code: `def parse_int(text):
+    try:
+        return int(text)
+    except ValueError as exc:
+        print(type(exc).__name__)
+        return None
+
+print(parse_int("7"))
+print(parse_int("nope"))`,
+      },
+      {
+        id: "async",
+        label: "feature: async and await",
+        code: `class Ready:
+    def __init__(self, value):
+        self.value = value
+
+    def __await__(self):
+        if False:
+            yield None
+        return self.value
+
+async def compute():
+    left = await Ready(20)
+    right = await Ready(22)
+    return left + right
+
+coro = compute()
+try:
+    coro.send(None)
+except StopIteration as done:
+    print(done.value)`,
+      },
+      {
+        id: "open",
+        label: "blocked: open on the flag path",
+        code: `try:
+    print(open("/challenge/flag.txt").read())
+except Exception as exc:
+    print(type(exc).__name__)
+    print(exc)`,
+      },
+      {
+        id: "import",
+        label: "blocked: import math",
+        code: `try:
+    import math
+    print(math.pi)
+except Exception as exc:
+    print(type(exc).__name__)
+    print(exc)`,
+      },
+      {
+        id: "builtins",
+        label: "blocked: import builtins",
+        code: `try:
+    import builtins
+    print("unexpected:", "open" in dir(builtins))
+except Exception as exc:
+    print(type(exc).__name__)
+    print(exc)`,
+      },
+    ];
+    const exampleMap = new Map(examples.map((item) => [item.id, item]));
+
+    for (const item of examples) {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.label;
+      example.append(option);
+    }
 
     function setStatus(message, tone) {
       status.textContent = message;
@@ -297,6 +456,19 @@ print(total)</textarea>
 
     function fill(node, value, emptyText) {
       node.textContent = value && value.length ? value : emptyText;
+    }
+
+    function resetResults() {
+      fill(stdout, "", "(run something)");
+      fill(stderr, "", "(empty)");
+      fill(error, "", "(empty)");
+      setStatus("ready", "idle");
+    }
+
+    function setBusy(isBusy) {
+      clear.disabled = isBusy;
+      example.disabled = isBusy;
+      submit.disabled = isBusy;
     }
 
     function summarizeHttpError(response, text) {
@@ -311,7 +483,7 @@ print(total)</textarea>
 
     async function runCode(event) {
       event.preventDefault();
-      submit.disabled = true;
+      setBusy(true);
       setStatus("running...", "running");
       fill(stdout, "", "(waiting)");
       fill(stderr, "", "(waiting)");
@@ -347,11 +519,25 @@ print(total)</textarea>
         fill(error, String(err), "(empty)");
         setStatus("request failed", "fail");
       } finally {
-        submit.disabled = false;
+        setBusy(false);
       }
     }
 
     form.addEventListener("submit", runCode);
+    clear.addEventListener("click", () => {
+      code.value = "";
+      example.value = "";
+      resetResults();
+      code.focus();
+    });
+    example.addEventListener("change", () => {
+      const selected = exampleMap.get(example.value);
+      if (!selected) {
+        return;
+      }
+      code.value = selected.code;
+      form.requestSubmit();
+    });
     code.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
