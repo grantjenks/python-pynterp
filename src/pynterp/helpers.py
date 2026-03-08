@@ -43,6 +43,10 @@ class InterpretedAsyncGenerator:
         return getattr(self._body_runner, "gi_frame", None)
 
     @property
+    def ag_code(self) -> Any:
+        return safe_getattr(self._body_runner, "ag_code")
+
+    @property
     def ag_running(self) -> bool:
         return self._running
 

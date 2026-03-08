@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import builtins
+import concurrent.futures
+import functools
 import sys
 from pathlib import Path
 
@@ -12,8 +15,25 @@ from pynterp import Interpreter
 HAS_TEMPLATE_STR = hasattr(ast, "TemplateStr")
 HAS_TYPE_ALIAS = hasattr(ast, "TypeAlias")
 HAS_TYPE_PARAMS = hasattr(ast.parse("def f():\n    pass").body[0], "type_params")
+HAS_ASYNCIO_PRIVATE_ISCOROUTINEFUNCTION = hasattr(asyncio.coroutines, "_iscoroutinefunction")
+HAS_FRAME_F_GENERATOR = hasattr(sys._getframe(), "f_generator")
+HAS_INTERPRETER_POOL_EXECUTOR = hasattr(concurrent.futures, "InterpreterPoolExecutor")
 if HAS_TEMPLATE_STR:
     import string.templatelib as templatelib
+
+
+def _runtime_exec_explicit_namespace_annotation_keys() -> tuple[bool, bool, bool]:
+    globals_dict: dict[str, object] = {}
+    locals_dict: dict[str, object] = {}
+    exec("'docstring'\n" "x: int = 5\n", globals_dict, locals_dict)
+    return (
+        "__annotate__" in globals_dict,
+        "__annotate__" in locals_dict,
+        "__annotations__" in locals_dict,
+    )
+
+
+RUNTIME_EXEC_EXPLICIT_NS_ANNOTATION_KEYS = _runtime_exec_explicit_namespace_annotation_keys()
 
 EXPECTED_KITCHEN_RESULT = {
     "flag": "module",
@@ -316,8 +336,12 @@ def run():
     exec("'docstring'\\n"
          "x: int = 5\\n", gns, lns)
     keys = ("__annotate__" in gns, "__annotate__" in lns, "__annotations__" in lns)
-    gns.update(lns)  # __annotate__ resolves names from globals.
-    return keys, lns["__annotate__"](1), lns["x"]
+    if "__annotate__" in lns:
+        gns.update(lns)  # __annotate__ resolves names from globals.
+        annotations = lns["__annotate__"](1)
+    else:
+        annotations = lns["__annotations__"]
+    return keys, annotations, lns["x"]
 
 RESULT = run()
 """
@@ -329,7 +353,7 @@ RESULT = run()
     }
     interpreter = Interpreter(allowed_imports=None, allow_relative_imports=True)
     interpreter.run(source, env=env, filename="<test_exec_builtin_explicit_namespaces>")
-    assert env["RESULT"] == ((False, True, False), {"x": int}, 5)
+    assert env["RESULT"] == (RUNTIME_EXEC_EXPLICIT_NS_ANNOTATION_KEYS, {"x": int}, 5)
 
 
 def test_eval_builtin_uses_interpreted_function_scope_locals() -> None:
@@ -1129,7 +1153,10 @@ CORO = add(4)
 
 
 def test_async_user_function_is_detected_as_coroutinefunction() -> None:
-    source = """
+    checker_name = (
+        "_iscoroutinefunction" if HAS_ASYNCIO_PRIVATE_ISCOROUTINEFUNCTION else "iscoroutinefunction"
+    )
+    source = f"""
 import inspect
 from asyncio import coroutines
 
@@ -1138,7 +1165,7 @@ async def callback():
 
 RESULT = (
     inspect.iscoroutinefunction(callback),
-    coroutines._iscoroutinefunction(callback),
+    coroutines.{checker_name}(callback),
 )
 """
     env = {
@@ -2408,7 +2435,8 @@ RESULT = (frame is not None, ag.ag_running, blocked_info)
 
 
 def test_async_generator_frame_generator_exposes_ag_code_alias(run_interpreter):
-    source = """
+    result_expr = "frame.f_generator.ag_code.co_name" if HAS_FRAME_F_GENERATOR else "ag.ag_code.co_name"
+    source = f"""
 async def gen():
     yield 1
 
@@ -2419,7 +2447,7 @@ try:
 except Exception:
     pass
 frame = ag.ag_frame
-RESULT = frame.f_generator.ag_code.co_name
+RESULT = {result_expr}
 """
     env = run_interpreter(source)
     assert isinstance(env["RESULT"], str)
@@ -2871,6 +2899,10 @@ finally:
     assert "surrogates not allowed" in env["RESULT"][1]
 
 
+@pytest.mark.skipif(
+    not HAS_INTERPRETER_POOL_EXECUTOR,
+    reason="InterpreterPoolExecutor is not available on this Python runtime",
+)
 def test_interpreter_pool_initializer_accepts_interpreted_functions(tmp_path: Path, monkeypatch):
     pytest.importorskip("_interpreters")
     module_name = "pynterp_interpreter_pool_fixture"

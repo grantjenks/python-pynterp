@@ -16,6 +16,7 @@ from typing import Any
 _MISSING_SHARED = object()
 _PY_CALLABLE = callable
 _PY_GETATTR = getattr
+_PY_HASATTR = hasattr
 _PY_ISINSTANCE = isinstance
 _PY_ISSUBCLASS = issubclass
 
@@ -119,6 +120,39 @@ def _patch_asyncio_format_helpers_get_function_source(module: ModuleType) -> Non
     get_function_source_wrapper.__doc__ = _PY_GETATTR(original, "__doc__", None)
     setattr(get_function_source_wrapper, "__pynterp_userfunction_source_adapter__", True)
     setattr(module, "_get_function_source", get_function_source_wrapper)
+
+
+def _patch_functools_update_wrapper(module: ModuleType) -> None:
+    original = _PY_GETATTR(module, "update_wrapper", None)
+    if not _PY_CALLABLE(original):
+        return
+    if _PY_GETATTR(original, "__pynterp_userfunction_annotate_adapter__", False):
+        return
+
+    wrapper_assignments = tuple(_PY_GETATTR(module, "WRAPPER_ASSIGNMENTS", ()))
+    wrapper_updates = tuple(_PY_GETATTR(module, "WRAPPER_UPDATES", ()))
+
+    def update_wrapper_wrapper(
+        wrapper: Any,
+        wrapped: Any,
+        assigned: Any = wrapper_assignments,
+        updated: Any = wrapper_updates,
+    ):
+        result = original(wrapper, wrapped, assigned=assigned, updated=updated)
+        if "__annotate__" not in tuple(assigned) and _PY_HASATTR(wrapped, "__annotate__"):
+            try:
+                setattr(result, "__annotate__", _PY_GETATTR(wrapped, "__annotate__"))
+            except Exception:
+                pass
+        return result
+
+    update_wrapper_wrapper.__name__ = _PY_GETATTR(original, "__name__", "update_wrapper")
+    update_wrapper_wrapper.__qualname__ = _PY_GETATTR(
+        original, "__qualname__", "update_wrapper"
+    )
+    update_wrapper_wrapper.__doc__ = _PY_GETATTR(original, "__doc__", None)
+    setattr(update_wrapper_wrapper, "__pynterp_userfunction_annotate_adapter__", True)
+    setattr(module, "update_wrapper", update_wrapper_wrapper)
 
 
 def _resolve_unittest_name_target(name: Any, module: Any) -> tuple[Any, Any, str] | None:
@@ -332,6 +366,8 @@ def maybe_patch_runtime_module(value: Any) -> Any:
         format_helpers = _PY_GETATTR(value, "format_helpers", None)
         if type(format_helpers) is ModuleType:
             _patch_asyncio_format_helpers_get_function_source(format_helpers)
+    if value.__name__ == "functools":
+        _patch_functools_update_wrapper(value)
     if value.__name__ == "unittest.loader":
         _patch_unittest_loader_load_tests_from_name(value)
     if value.__name__ == "unittest":
