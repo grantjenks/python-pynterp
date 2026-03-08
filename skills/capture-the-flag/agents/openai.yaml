@@ -1,4 +1,0 @@
-interface:
-  display_name: "Capture The Flag"
-  short_description: "Develop an escape for pynterp.gmj.dev"
-  default_prompt: "Use $capture-the-flag to develop and validate a working escape for pynterp.gmj.dev."

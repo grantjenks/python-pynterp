@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capture The Flag"
+  short_description: "Investigate source-available CTF services and build working exploits"
+  default_prompt: "Use $capture-the-flag to analyze the challenge source, reproduce it locally, iterate on exploit probes, and confirm any claimed working payload against the live service when available."
