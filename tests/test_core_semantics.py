@@ -4,7 +4,6 @@ import ast
 import asyncio
 import builtins
 import concurrent.futures
-import functools
 import sys
 from pathlib import Path
 
@@ -25,7 +24,7 @@ if HAS_TEMPLATE_STR:
 def _runtime_exec_explicit_namespace_annotation_keys() -> tuple[bool, bool, bool]:
     globals_dict: dict[str, object] = {}
     locals_dict: dict[str, object] = {}
-    exec("'docstring'\n" "x: int = 5\n", globals_dict, locals_dict)
+    exec("'docstring'\nx: int = 5\n", globals_dict, locals_dict)
     return (
         "__annotate__" in globals_dict,
         "__annotate__" in locals_dict,
@@ -2435,7 +2434,9 @@ RESULT = (frame is not None, ag.ag_running, blocked_info)
 
 
 def test_async_generator_frame_generator_exposes_ag_code_alias(run_interpreter):
-    result_expr = "frame.f_generator.ag_code.co_name" if HAS_FRAME_F_GENERATOR else "ag.ag_code.co_name"
+    result_expr = (
+        "frame.f_generator.ag_code.co_name" if HAS_FRAME_F_GENERATOR else "ag.ag_code.co_name"
+    )
     source = f"""
 async def gen():
     yield 1

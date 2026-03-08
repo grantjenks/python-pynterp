@@ -147,9 +147,7 @@ def _patch_functools_update_wrapper(module: ModuleType) -> None:
         return result
 
     update_wrapper_wrapper.__name__ = _PY_GETATTR(original, "__name__", "update_wrapper")
-    update_wrapper_wrapper.__qualname__ = _PY_GETATTR(
-        original, "__qualname__", "update_wrapper"
-    )
+    update_wrapper_wrapper.__qualname__ = _PY_GETATTR(original, "__qualname__", "update_wrapper")
     update_wrapper_wrapper.__doc__ = _PY_GETATTR(original, "__doc__", None)
     setattr(update_wrapper_wrapper, "__pynterp_userfunction_annotate_adapter__", True)
     setattr(module, "update_wrapper", update_wrapper_wrapper)
