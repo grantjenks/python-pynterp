@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import builtins
+import weakref
 from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
-import weakref
 
 from .builtins import SafeExposedCallableBase, wrap_safe_callable
 
@@ -205,7 +205,9 @@ class SafeObjectProxy:
         if name in _LOCAL_OBJECT_PROXY_ATTRS:
             return object.__getattribute__(self, name)
         membrane = _object_proxy_membrane(self)
-        return membrane.expose_external_value(getattr(_object_proxy_raw(self), name), wrap_types=True)
+        return membrane.expose_external_value(
+            getattr(_object_proxy_raw(self), name), wrap_types=True
+        )
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in _LOCAL_OBJECT_PROXY_ATTRS or (name.startswith("__") and name.endswith("__")):
@@ -444,7 +446,11 @@ class HostMembrane:
                 "raw host classes are not allowed in safe env; wrap them with pynterp.expose_class(...)"
             )
 
-        if wrap_types and isinstance(value, type) and not self._is_internal_interpreter_value(value):
+        if (
+            wrap_types
+            and isinstance(value, type)
+            and not self._is_internal_interpreter_value(value)
+        ):
             return self._wrap_type(value, subclassable=True)
 
         if self._is_passthrough_value(value):
@@ -558,7 +564,11 @@ class HostMembrane:
         if cached is not None:
             return cached
 
-        raw_callable = self._callable_wrappers.get(value) if isinstance(value, SafeExposedCallableBase) else None
+        raw_callable = (
+            self._callable_wrappers.get(value)
+            if isinstance(value, SafeExposedCallableBase)
+            else None
+        )
         if raw_callable is not None:
             return raw_callable
 
@@ -645,6 +655,7 @@ class HostMembrane:
 
         getitem = None
         if hasattr(value, "__getitem__"):
+
             def call_getitem(item: Any) -> Any:
                 raw_item = self.unwrap_external_value(item)
                 return self.expose_external_value(value[raw_item], wrap_types=True)
@@ -654,7 +665,9 @@ class HostMembrane:
         wrapper = wrap_safe_callable(
             getattr(value, "__name__", type(value).__name__),
             invoke,
-            qualname=getattr(value, "__qualname__", getattr(value, "__name__", type(value).__name__)),
+            qualname=getattr(
+                value, "__qualname__", getattr(value, "__name__", type(value).__name__)
+            ),
             doc=getattr(value, "__doc__", None),
             module=getattr(value, "__module__", None),
             signature=None,
@@ -677,7 +690,9 @@ class HostMembrane:
         object.__setattr__(wrapper, "__package__", getattr(value, "__package__", None))
         names = getattr(value, "__all__", None)
         if names is None:
-            names = tuple(name for name in getattr(value, "__dict__", {}).keys() if not name.startswith("_"))
+            names = tuple(
+                name for name in getattr(value, "__dict__", {}).keys() if not name.startswith("_")
+            )
         else:
             names = tuple(names)
         object.__setattr__(wrapper, "__all__", names)
@@ -720,7 +735,9 @@ class HostMembrane:
             return True
         if isinstance(value, BaseException):
             return True
-        if isinstance(value, SafeExposedCallableBase | SafeModuleProxy | SafeObjectProxy | SafeTypeProxy):
+        if isinstance(
+            value, SafeExposedCallableBase | SafeModuleProxy | SafeObjectProxy | SafeTypeProxy
+        ):
             return True
         if isinstance(value, type):
             return True

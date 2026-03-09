@@ -145,8 +145,7 @@ def test_make_default_env_exposed_host_classes_cannot_be_subclassed():
     env = interpreter.make_default_env({"CounterType": expose_class(Counter)})
 
     result = interpreter.run(
-        "class Child(CounterType):\n"
-        "    pass\n",
+        "class Child(CounterType):\n    pass\n",
         env=env,
     )
     assert isinstance(result.exception, TypeError)
@@ -161,9 +160,7 @@ def test_make_default_env_exposed_host_classes_can_opt_into_subclassing():
     env = interpreter.make_default_env({"CounterType": expose_class(Counter, subclassable=True)})
 
     result = interpreter.run(
-        "class Child(CounterType):\n"
-        "    pass\n"
-        "RESULT = issubclass(Child, CounterType)\n",
+        "class Child(CounterType):\n    pass\nRESULT = issubclass(Child, CounterType)\n",
         env=env,
     )
     assert result.ok

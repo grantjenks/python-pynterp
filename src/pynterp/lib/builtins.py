@@ -171,7 +171,9 @@ def wrap_safe_callable(
         def __delattr__(self, name: str) -> None:
             raise AttributeError(f"{type(self).__name__!r} object is immutable")
 
-    SafeExposedCallable.__module__ = getattr(func, "__module__", __name__) if module is None else module
+    SafeExposedCallable.__module__ = (
+        getattr(func, "__module__", __name__) if module is None else module
+    )
     wrapped = SafeExposedCallable()
     object.__setattr__(wrapped, "__name__", name)
     object.__setattr__(wrapped, "__qualname__", qualname if qualname is not None else name)
