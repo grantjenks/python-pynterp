@@ -8,7 +8,7 @@ from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
 from .host_exec import safe_host_eval, safe_host_exec
-from .lib.builtins import is_safe_builtin_callable, wrap_safe_callable
+from .lib.builtins import SafeExposedCallableBase, is_safe_builtin_callable, wrap_safe_callable
 from .lib.guards import safe_getattr, safe_vars
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
@@ -58,10 +58,17 @@ class ExpressionMixin:
         module_name = scope.globals.get("__name__")
         if not isinstance(module_name, str) or not module_name:
             return result
-        if getattr(result, "__module__", None) != __name__:
+        raw_result = result
+        membrane = getattr(self, "_host_membrane", None)
+        if membrane is not None:
+            raw_result = membrane.unwrap_external_value(result)
+        raw_result_module = getattr(raw_result, "__module__", None)
+        if raw_result_module not in {__name__, "pynterp.lib.membrane"}:
             return result
         try:
-            setattr(result, "__module__", module_name)
+            setattr(raw_result, "__module__", module_name)
+            if isinstance(result, SafeExposedCallableBase):
+                type(result).__module__ = module_name
         except Exception:
             pass
         return result
@@ -364,8 +371,8 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
-            result = self._adapt_runtime_value(special_value)
-            return self._maybe_fix_typing_runtime_module(func, result, scope)
+            result = self._maybe_fix_typing_runtime_module(func, special_value, scope)
+            return self._adapt_runtime_value(result)
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
@@ -374,8 +381,8 @@ class ExpressionMixin:
             result = func(*args, **kwargs)
         else:
             result = func(*args)
-        result = self._adapt_runtime_value(result)
-        return self._maybe_fix_typing_runtime_module(func, result, scope)
+        result = self._maybe_fix_typing_runtime_module(func, result, scope)
+        return self._adapt_runtime_value(result)
 
     def eval_List(self, node: ast.List, scope: RuntimeScope) -> list:
         out: list[Any] = []
@@ -731,7 +738,8 @@ class ExpressionMixin:
                 self._store_keyword(func, kwargs, kw.arg, value)
         special_value = self._maybe_special_builtin_call(func, args, kwargs, scope)
         if special_value is not _NO_SPECIAL_CALL:
-            return special_value
+            result = self._maybe_fix_typing_runtime_module(func, special_value, scope)
+            return self._adapt_runtime_value(result)
         super_value = self._maybe_zero_arg_super(func, args, kwargs)
         if super_value is not _NO_SUPER:
             return super_value
@@ -740,7 +748,8 @@ class ExpressionMixin:
             result = func(*args, **kwargs)
         else:
             result = func(*args)
-        return self._maybe_fix_typing_runtime_module(func, result, scope)
+        result = self._maybe_fix_typing_runtime_module(func, result, scope)
+        return self._adapt_runtime_value(result)
 
     def g_eval_List(self, node: ast.List, scope: RuntimeScope) -> Iterator[list]:
         out = []

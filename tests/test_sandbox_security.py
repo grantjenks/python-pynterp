@@ -13826,6 +13826,22 @@ def test_host_env_function_annotations_cannot_be_reassigned():
         )
 
 
+def test_host_env_instance_method_annotations_cannot_be_reassigned():
+    class Helper:
+        def probe(self, value):
+            return value
+
+    interp = Interpreter(allowed_imports={"inspect"})
+    env = interp.make_default_env({"HELPER": Helper()})
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'HELPER.probe.__annotations__ = {"value": "1 + 2"}',
+            env=env,
+            filename="<host_env_instance_method_annotations_probe>",
+        )
+
+
 def test_signature_from_callable_eval_str_cannot_mutate_host_env_function_annotations():
     def helper(value):
         return value
@@ -13843,4 +13859,16 @@ RESULT = Sig.from_callable(HELPER, eval_str=True).parameters["value"].annotation
 """,
             env=env,
             filename="<signature_from_callable_eval_str_host_env_function_probe>",
+        )
+
+
+def test_imported_host_instance_method_annotations_cannot_be_reassigned():
+    interp = Interpreter(allowed_imports={"pathlib"})
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'import pathlib\npath = pathlib.Path(".")\npath.match.__annotations__ = {"pattern": "1 + 2"}',
+            env=env,
+            filename="<imported_host_instance_method_annotations_probe>",
         )

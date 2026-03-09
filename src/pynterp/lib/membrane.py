@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
@@ -25,6 +26,81 @@ _LOCAL_MODULE_PROXY_ATTRS = frozenset(
     }
 )
 
+_HIDDEN_OBJECT_PROXY_ATTRS = frozenset(
+    {
+        "_SafeObjectProxy__membrane",
+        "_SafeObjectProxy__raw",
+    }
+)
+
+_HIDDEN_TYPE_PROXY_ATTRS = frozenset(
+    {
+        "_SafeTypeProxy__membrane",
+        "_SafeTypeProxy__raw",
+    }
+)
+
+_LOCAL_OBJECT_PROXY_ATTRS = frozenset(
+    {
+        "__class__",
+        "__bool__",
+        "__contains__",
+        "__delattr__",
+        "__delitem__",
+        "__dict__",
+        "__dir__",
+        "__enter__",
+        "__eq__",
+        "__exit__",
+        "__fspath__",
+        "__ge__",
+        "__getattribute__",
+        "__getitem__",
+        "__gt__",
+        "__hash__",
+        "__iter__",
+        "__le__",
+        "__len__",
+        "__lt__",
+        "__module__",
+        "__ne__",
+        "__next__",
+        "__repr__",
+        "__setattr__",
+        "__setitem__",
+        "__str__",
+        "__truediv__",
+        "__rtruediv__",
+    }
+    | _HIDDEN_OBJECT_PROXY_ATTRS
+)
+
+_LOCAL_TYPE_PROXY_ATTRS = frozenset(
+    {
+        "__call__",
+        "__class__",
+        "__delattr__",
+        "__dir__",
+        "__eq__",
+        "__ge__",
+        "__getattribute__",
+        "__getitem__",
+        "__gt__",
+        "__hash__",
+        "__le__",
+        "__lt__",
+        "__mro_entries__",
+        "__module__",
+        "__ne__",
+        "__or__",
+        "__repr__",
+        "__ror__",
+        "__setattr__",
+        "__str__",
+    }
+    | _HIDDEN_TYPE_PROXY_ATTRS
+)
+
 
 @dataclass(slots=True)
 class _ModuleProxyState:
@@ -40,11 +116,15 @@ _MODULE_PROXY_STATES: "weakref.WeakKeyDictionary[SafeModuleProxy, _ModuleProxySt
 class SafeModuleProxy:
     __slots__ = ("__weakref__", "__name__", "__doc__", "__package__", "__all__")
 
+    @property
+    def __class__(self) -> type[ModuleType]:
+        return type(_MODULE_PROXY_STATES[self].raw)
+
     def __getattribute__(self, name: str) -> Any:
         if name in _LOCAL_MODULE_PROXY_ATTRS:
             return object.__getattribute__(self, name)
         state = _MODULE_PROXY_STATES[self]
-        return state.membrane.expose_external_value(getattr(state.raw, name))
+        return state.membrane.expose_external_value(getattr(state.raw, name), wrap_types=True)
 
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(f"{type(self).__name__!r} object is immutable")
@@ -65,6 +145,254 @@ class SafeModuleProxy:
         return sorted(raw_names)
 
 
+def _object_proxy_raw(proxy: "SafeObjectProxy") -> Any:
+    return object.__getattribute__(proxy, "_SafeObjectProxy__raw")
+
+
+def _object_proxy_membrane(proxy: "SafeObjectProxy") -> "HostMembrane":
+    return object.__getattribute__(proxy, "_SafeObjectProxy__membrane")
+
+
+def _type_proxy_raw(proxy: "SafeTypeProxy") -> type[Any]:
+    return object.__getattribute__(proxy, "_SafeTypeProxy__raw")
+
+
+def _type_proxy_membrane(proxy: "SafeTypeProxy") -> "HostMembrane":
+    return object.__getattribute__(proxy, "_SafeTypeProxy__membrane")
+
+
+class SafeObjectProxy:
+    __slots__ = ("__weakref__", "__raw", "__membrane")
+
+    @property
+    def __class__(self) -> type[Any]:
+        return type(_object_proxy_raw(self))
+
+    @property
+    def __module__(self) -> str | None:
+        return getattr(_object_proxy_raw(self), "__module__", None)
+
+    @property
+    def __dict__(self) -> dict[str, Any]:
+        raw_dict = getattr(_object_proxy_raw(self), "__dict__", None)
+        if raw_dict is None:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute '__dict__'")
+        membrane = _object_proxy_membrane(self)
+        return {
+            key: membrane.expose_external_value(value, wrap_types=True)
+            for key, value in raw_dict.items()
+        }
+
+    def __getattribute__(self, name: str) -> Any:
+        if name in _HIDDEN_OBJECT_PROXY_ATTRS:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        if name in _LOCAL_OBJECT_PROXY_ATTRS:
+            return object.__getattribute__(self, name)
+        membrane = _object_proxy_membrane(self)
+        return membrane.expose_external_value(getattr(_object_proxy_raw(self), name), wrap_types=True)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in _LOCAL_OBJECT_PROXY_ATTRS or (name.startswith("__") and name.endswith("__")):
+            raise AttributeError(f"{type(self).__name__!r} object is immutable")
+        membrane = _object_proxy_membrane(self)
+        setattr(_object_proxy_raw(self), name, membrane.unwrap_external_value(value))
+
+    def __delattr__(self, name: str) -> None:
+        if name in _LOCAL_OBJECT_PROXY_ATTRS or (name.startswith("__") and name.endswith("__")):
+            raise AttributeError(f"{type(self).__name__!r} object is immutable")
+        delattr(_object_proxy_raw(self), name)
+
+    def __repr__(self) -> str:
+        return repr(_object_proxy_raw(self))
+
+    def __str__(self) -> str:
+        return str(_object_proxy_raw(self))
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(dir(_object_proxy_raw(self))))
+
+    def __bool__(self) -> bool:
+        return bool(_object_proxy_raw(self))
+
+    def __len__(self) -> int:
+        return len(_object_proxy_raw(self))
+
+    def __contains__(self, item: Any) -> bool:
+        membrane = _object_proxy_membrane(self)
+        return membrane.unwrap_external_value(item) in _object_proxy_raw(self)
+
+    def __getitem__(self, item: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        raw_item = membrane.unwrap_external_value(item)
+        return membrane.expose_external_value(_object_proxy_raw(self)[raw_item], wrap_types=True)
+
+    def __setitem__(self, item: Any, value: Any) -> None:
+        membrane = _object_proxy_membrane(self)
+        raw_item = membrane.unwrap_external_value(item)
+        raw_value = membrane.unwrap_external_value(value)
+        _object_proxy_raw(self)[raw_item] = raw_value
+
+    def __delitem__(self, item: Any) -> None:
+        membrane = _object_proxy_membrane(self)
+        raw_item = membrane.unwrap_external_value(item)
+        del _object_proxy_raw(self)[raw_item]
+
+    def __iter__(self) -> Any:
+        raw_iter = iter(_object_proxy_raw(self))
+        if raw_iter is _object_proxy_raw(self):
+            return self
+        return _object_proxy_membrane(self).expose_external_value(raw_iter, wrap_types=True)
+
+    def __next__(self) -> Any:
+        return _object_proxy_membrane(self).expose_external_value(
+            next(_object_proxy_raw(self)),
+            wrap_types=True,
+        )
+
+    def __enter__(self) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return membrane.expose_external_value(_object_proxy_raw(self).__enter__(), wrap_types=True)
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        raw_args = membrane.unwrap_external_value((exc_type, exc, tb))
+        return _object_proxy_raw(self).__exit__(*raw_args)
+
+    def __fspath__(self) -> Any:
+        return _object_proxy_raw(self).__fspath__()
+
+    def __hash__(self) -> int:
+        return hash(_object_proxy_raw(self))
+
+    def __eq__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) == membrane.unwrap_external_value(other)
+
+    def __ne__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) != membrane.unwrap_external_value(other)
+
+    def __lt__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) < membrane.unwrap_external_value(other)
+
+    def __le__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) <= membrane.unwrap_external_value(other)
+
+    def __gt__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) > membrane.unwrap_external_value(other)
+
+    def __ge__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        return _object_proxy_raw(self) >= membrane.unwrap_external_value(other)
+
+    def __truediv__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        raw_other = membrane.unwrap_external_value(other)
+        return membrane.expose_external_value(_object_proxy_raw(self) / raw_other, wrap_types=True)
+
+    def __rtruediv__(self, other: Any) -> Any:
+        membrane = _object_proxy_membrane(self)
+        raw_other = membrane.unwrap_external_value(other)
+        return membrane.expose_external_value(raw_other / _object_proxy_raw(self), wrap_types=True)
+
+
+class SafeTypeProxy:
+    __slots__ = ("__raw", "__membrane")
+
+    @property
+    def __class__(self) -> type[type[Any]]:
+        return type(_type_proxy_raw(self))
+
+    @property
+    def __module__(self) -> str | None:
+        return getattr(_type_proxy_raw(self), "__module__", None)
+
+    def __getattribute__(self, name: str) -> Any:
+        if name in _HIDDEN_TYPE_PROXY_ATTRS:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        if name in _LOCAL_TYPE_PROXY_ATTRS:
+            return object.__getattribute__(self, name)
+        membrane = _type_proxy_membrane(self)
+        return membrane.expose_external_value(getattr(_type_proxy_raw(self), name), wrap_types=True)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        raw_args = membrane.unwrap_external_value(args)
+        raw_kwargs = membrane.unwrap_external_value(kwargs)
+        if raw_kwargs:
+            result = _type_proxy_raw(self)(*raw_args, **raw_kwargs)
+        else:
+            result = _type_proxy_raw(self)(*raw_args)
+        return membrane.expose_external_value(result, wrap_types=True)
+
+    def __getitem__(self, item: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        raw_item = membrane.unwrap_external_value(item)
+        return membrane.expose_external_value(_type_proxy_raw(self)[raw_item], wrap_types=True)
+
+    def __mro_entries__(self, bases: tuple[Any, ...]) -> tuple[type[Any], ...]:
+        return (_type_proxy_raw(self),)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError(f"{type(self).__name__!r} object is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{type(self).__name__!r} object is immutable")
+
+    def __repr__(self) -> str:
+        return repr(_type_proxy_raw(self))
+
+    def __str__(self) -> str:
+        return str(_type_proxy_raw(self))
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(dir(_type_proxy_raw(self))))
+
+    def __hash__(self) -> int:
+        return hash(_type_proxy_raw(self))
+
+    def __eq__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) == membrane.unwrap_external_value(other)
+
+    def __ne__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) != membrane.unwrap_external_value(other)
+
+    def __lt__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) < membrane.unwrap_external_value(other)
+
+    def __le__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) <= membrane.unwrap_external_value(other)
+
+    def __gt__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) > membrane.unwrap_external_value(other)
+
+    def __ge__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return _type_proxy_raw(self) >= membrane.unwrap_external_value(other)
+
+    def __or__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return membrane.expose_external_value(
+            _type_proxy_raw(self) | membrane.unwrap_external_value(other),
+            wrap_types=True,
+        )
+
+    def __ror__(self, other: Any) -> Any:
+        membrane = _type_proxy_membrane(self)
+        return membrane.expose_external_value(
+            membrane.unwrap_external_value(other) | _type_proxy_raw(self),
+            wrap_types=True,
+        )
+
+
 class HostMembrane:
     def __init__(self) -> None:
         self._callable_cache: dict[int, tuple[Any, SafeExposedCallableBase]] = {}
@@ -72,8 +400,19 @@ class HostMembrane:
             weakref.WeakKeyDictionary()
         )
         self._module_cache: dict[int, tuple[ModuleType, SafeModuleProxy]] = {}
+        self._object_cache: dict[int, tuple[Any, SafeObjectProxy]] = {}
+        self._type_cache: dict[int, tuple[type[Any], SafeTypeProxy]] = {}
 
-    def expose_external_value(self, value: Any, *, memo: dict[int, Any] | None = None) -> Any:
+    def expose_external_value(
+        self,
+        value: Any,
+        *,
+        memo: dict[int, Any] | None = None,
+        wrap_types: bool = False,
+    ) -> Any:
+        if wrap_types and isinstance(value, type) and not self._is_internal_interpreter_value(value):
+            return self._wrap_type(value)
+
         if self._is_passthrough_value(value):
             return value
 
@@ -94,13 +433,19 @@ class HostMembrane:
         if isinstance(value, list):
             out: list[Any] = []
             memo[obj_id] = out
-            out.extend(self.expose_external_value(item, memo=memo) for item in value)
+            out.extend(
+                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                for item in value
+            )
             return out
 
         if isinstance(value, tuple):
             out: list[Any] = []
             memo[obj_id] = out
-            result = tuple(self.expose_external_value(item, memo=memo) for item in value)
+            result = tuple(
+                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                for item in value
+            )
             memo[obj_id] = result
             return result
 
@@ -108,13 +453,16 @@ class HostMembrane:
             out: set[Any] = set()
             memo[obj_id] = out
             for item in value:
-                out.add(self.expose_external_value(item, memo=memo))
+                out.add(self.expose_external_value(item, memo=memo, wrap_types=wrap_types))
             return out
 
         if isinstance(value, frozenset):
             out: set[Any] = set()
             memo[obj_id] = out
-            result = frozenset(self.expose_external_value(item, memo=memo) for item in value)
+            result = frozenset(
+                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                for item in value
+            )
             memo[obj_id] = result
             return result
 
@@ -122,13 +470,14 @@ class HostMembrane:
             out: dict[Any, Any] = {}
             memo[obj_id] = out
             for key, item in value.items():
-                out[self.expose_external_value(key, memo=memo)] = self.expose_external_value(
+                out[self.expose_external_value(key, memo=memo, wrap_types=wrap_types)] = self.expose_external_value(
                     item,
                     memo=memo,
+                    wrap_types=wrap_types,
                 )
             return out
 
-        return value
+        return self._wrap_object(value)
 
     def adapt_env_in_place(self, env: dict[str, Any]) -> None:
         for key, value in tuple(env.items()):
@@ -151,6 +500,12 @@ class HostMembrane:
 
         if isinstance(value, SafeModuleProxy):
             return _MODULE_PROXY_STATES[value].raw
+
+        if isinstance(value, SafeObjectProxy):
+            return _object_proxy_raw(value)
+
+        if isinstance(value, SafeTypeProxy):
+            return _type_proxy_raw(value)
 
         if isinstance(value, list):
             out: list[Any] = []
@@ -191,6 +546,23 @@ class HostMembrane:
 
         return value
 
+    def safe_type(self, *args: Any) -> Any:
+        if len(args) == 1:
+            return builtins.type(self.unwrap_external_value(args[0]))
+        return builtins.type(*args)
+
+    def safe_isinstance(self, obj: Any, class_or_tuple: Any) -> bool:
+        return builtins.isinstance(
+            self.unwrap_external_value(obj),
+            self._unwrap_type_spec(class_or_tuple),
+        )
+
+    def safe_issubclass(self, cls: Any, class_or_tuple: Any) -> bool:
+        return builtins.issubclass(
+            self._unwrap_type_spec(cls),
+            self._unwrap_type_spec(class_or_tuple),
+        )
+
     def _wrap_callable(self, value: Any) -> SafeExposedCallableBase:
         cached_entry = self._callable_cache.get(id(value))
         if cached_entry is not None:
@@ -201,13 +573,17 @@ class HostMembrane:
         def invoke(*args: Any, **kwargs: Any) -> Any:
             raw_args = self.unwrap_external_value(args)
             raw_kwargs = self.unwrap_external_value(kwargs)
-            return self.expose_external_value(value(*raw_args, **raw_kwargs))
+            if raw_kwargs:
+                result = value(*raw_args, **raw_kwargs)
+            else:
+                result = value(*raw_args)
+            return self.expose_external_value(result, wrap_types=True)
 
         getitem = None
         if hasattr(value, "__getitem__"):
             def call_getitem(item: Any) -> Any:
                 raw_item = self.unwrap_external_value(item)
-                return self.expose_external_value(value[raw_item])
+                return self.expose_external_value(value[raw_item], wrap_types=True)
 
             getitem = call_getitem
 
@@ -245,10 +621,38 @@ class HostMembrane:
         self._module_cache[id(value)] = (value, wrapper)
         return wrapper
 
+    def _wrap_object(self, value: Any) -> SafeObjectProxy:
+        cached_entry = self._object_cache.get(id(value))
+        if cached_entry is not None:
+            cached_raw, cached_wrapper = cached_entry
+            if cached_raw is value:
+                return cached_wrapper
+
+        wrapper = SafeObjectProxy()
+        object.__setattr__(wrapper, "_SafeObjectProxy__raw", value)
+        object.__setattr__(wrapper, "_SafeObjectProxy__membrane", self)
+        self._object_cache[id(value)] = (value, wrapper)
+        return wrapper
+
+    def _wrap_type(self, value: type[Any]) -> SafeTypeProxy:
+        cached_entry = self._type_cache.get(id(value))
+        if cached_entry is not None:
+            cached_raw, cached_wrapper = cached_entry
+            if cached_raw is value:
+                return cached_wrapper
+
+        wrapper = SafeTypeProxy()
+        object.__setattr__(wrapper, "_SafeTypeProxy__raw", value)
+        object.__setattr__(wrapper, "_SafeTypeProxy__membrane", self)
+        self._type_cache[id(value)] = (value, wrapper)
+        return wrapper
+
     def _is_passthrough_value(self, value: Any) -> bool:
         if value is None or isinstance(value, (bool, int, float, complex, str, bytes, bytearray)):
             return True
-        if isinstance(value, SafeExposedCallableBase | SafeModuleProxy):
+        if isinstance(value, BaseException):
+            return True
+        if isinstance(value, SafeExposedCallableBase | SafeModuleProxy | SafeObjectProxy | SafeTypeProxy):
             return True
         if isinstance(value, type):
             return True
@@ -256,6 +660,11 @@ class HostMembrane:
 
     def _should_wrap_callable(self, value: Any) -> bool:
         return callable(value) and not isinstance(value, type)
+
+    def _unwrap_type_spec(self, value: Any) -> Any:
+        if isinstance(value, tuple):
+            return tuple(self._unwrap_type_spec(item) for item in value)
+        return self.unwrap_external_value(value)
 
     def _is_internal_interpreter_value(self, value: Any) -> bool:
         try:

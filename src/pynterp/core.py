@@ -9,7 +9,7 @@ from pynterp.lib import (
     import_safe_stdlib_module,
     make_safe_env,
 )
-from pynterp.lib.builtins import is_safe_builtin_callable
+from pynterp.lib.builtins import is_safe_builtin_callable, wrap_safe_callable
 from pynterp.lib.compat import maybe_patch_runtime_module
 from pynterp.lib.membrane import HostMembrane
 
@@ -111,8 +111,10 @@ class InterpreterCore:
             importer = loader.import_module
 
         out = make_safe_env(importer, env=base, name=name)
+        self._install_proxy_aware_safe_builtins(out["__builtins__"])
         if loader is not None:
             out.setdefault("__module_loader__", loader)
+            self._host_membrane.adapt_env_in_place(out)
         return out
 
     # ----- run -----
@@ -138,6 +140,7 @@ class InterpreterCore:
             raise TypeError("__builtins__ must be dict, module, or None")
 
         if self._env_uses_safe_builtins(builtins_dict):
+            self._install_proxy_aware_safe_builtins(builtins_dict)
             self._host_membrane.adapt_env_in_place(globals_dict)
 
         try:
@@ -150,6 +153,22 @@ class InterpreterCore:
 
     def _env_uses_safe_builtins(self, builtins_dict: dict[str, Any]) -> bool:
         return is_safe_builtin_callable(builtins_dict.get("getattr"), "getattr")
+
+    def _install_proxy_aware_safe_builtins(self, builtins_dict: dict[str, Any]) -> None:
+        if not isinstance(builtins_dict, dict) or not self._env_uses_safe_builtins(builtins_dict):
+            return
+        builtins_dict["isinstance"] = wrap_safe_callable(
+            "isinstance",
+            self._host_membrane.safe_isinstance,
+            module="builtins",
+            signature=None,
+        )
+        builtins_dict["issubclass"] = wrap_safe_callable(
+            "issubclass",
+            self._host_membrane.safe_issubclass,
+            module="builtins",
+            signature=None,
+        )
 
     def run_or_raise(self, source: str, env: dict, filename: str = "<pynterp>") -> dict:
         result = self.run(source, env, filename)

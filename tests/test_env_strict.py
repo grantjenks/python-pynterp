@@ -71,6 +71,59 @@ def test_make_default_env_wraps_host_env_callables():
     assert env["RESULT"] == 42
 
 
+def test_make_default_env_wraps_host_env_instances_and_preserves_common_reflection():
+    class Counter:
+        def __init__(self, value):
+            self.value = value
+
+        def bump(self, amount=1):
+            self.value += amount
+            return self.value
+
+    counter = Counter(4)
+    interpreter = Interpreter()
+    env = interpreter.make_default_env({"COUNTER": counter, "CounterType": Counter})
+
+    assert env["COUNTER"] is not counter
+
+    result = interpreter.run(
+        "COUNTER.value = COUNTER.value + 3\n"
+        "RESULT = (\n"
+        "    vars(COUNTER)['value'],\n"
+        "    COUNTER.bump(2),\n"
+        "    COUNTER.value,\n"
+        "    COUNTER.__class__ is CounterType,\n"
+        "    isinstance(COUNTER, CounterType),\n"
+        ")\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] == (7, 9, 9, True, True)
+    assert counter.value == 9
+
+
+def test_imported_host_class_instances_are_wrapped_on_call_result():
+    interpreter = Interpreter(allowed_imports={"pathlib"})
+    env = interpreter.make_default_env()
+
+    result = interpreter.run(
+        "import pathlib\n"
+        "base = pathlib.Path('alpha')\n"
+        "child = base / 'beta'\n"
+        "RESULT = (\n"
+        "    base.__class__.__name__.endswith('Path'),\n"
+        "    isinstance(base, pathlib.Path),\n"
+        "    child.__class__ is base.__class__,\n"
+        "    isinstance(child, pathlib.Path),\n"
+        "    child.name,\n"
+        "    str(child),\n"
+        ")\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] == (True, True, True, True, "beta", "alpha/beta")
+
+
 def test_uncaught_system_exit_is_captured():
     interpreter = Interpreter()
     env = interpreter.make_default_env()
