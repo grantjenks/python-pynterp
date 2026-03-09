@@ -13809,3 +13809,38 @@ def test_host_class_annotations_cannot_be_reassigned():
             env=env,
             filename="<host_class_annotations_probe>",
         )
+
+
+def test_host_env_function_annotations_cannot_be_reassigned():
+    def helper(value):
+        return value
+
+    interp = Interpreter(allowed_imports={"inspect"})
+    env = interp.make_default_env({"HELPER": helper})
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'HELPER.__annotations__ = {"value": "1 + 2"}',
+            env=env,
+            filename="<host_env_function_annotations_probe>",
+        )
+
+
+def test_signature_from_callable_eval_str_cannot_mutate_host_env_function_annotations():
+    def helper(value):
+        return value
+
+    interp = Interpreter(allowed_imports={"inspect"})
+    env = interp.make_default_env({"HELPER": helper})
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            """
+import inspect
+Sig = type((lambda: None).__signature__)
+HELPER.__annotations__ = {"value": "1 + 2"}
+RESULT = Sig.from_callable(HELPER, eval_str=True).parameters["value"].annotation
+""",
+            env=env,
+            filename="<signature_from_callable_eval_str_host_env_function_probe>",
+        )

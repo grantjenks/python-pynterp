@@ -9,7 +9,9 @@ from pynterp.lib import (
     import_safe_stdlib_module,
     make_safe_env,
 )
+from pynterp.lib.builtins import is_safe_builtin_callable
 from pynterp.lib.compat import maybe_patch_runtime_module
+from pynterp.lib.membrane import HostMembrane
 
 from .code import ModuleCode
 from .scopes import ModuleScope, RuntimeScope
@@ -41,6 +43,7 @@ class InterpreterCore:
         """
         self.allowed_imports = None if allowed_imports is None else set(allowed_imports)
         self.allow_relative_imports = bool(allow_relative_imports)
+        self._host_membrane = HostMembrane()
 
     # ----- restricted import -----
 
@@ -63,11 +66,12 @@ class InterpreterCore:
             raise ImportError("relative imports are not supported by this interpreter")
         if not self._is_allowed_module(name):
             raise ImportError(f"import of '{name}' is not allowed")
-        module = import_safe_stdlib_module(name)
+        module = maybe_patch_runtime_module(import_safe_stdlib_module(name))
         # Match __import__ behavior: without fromlist, return the top-level package.
         if not fromlist and "." in name:
-            return self._adapt_runtime_value(import_safe_stdlib_module(name.split(".", 1)[0]))
-        return self._adapt_runtime_value(module)
+            top_level = maybe_patch_runtime_module(import_safe_stdlib_module(name.split(".", 1)[0]))
+            return self._host_membrane.expose_external_value(top_level)
+        return self._host_membrane.expose_external_value(module)
 
     def _adapt_runtime_value(self, value: Any) -> Any:
         return maybe_patch_runtime_module(value)
@@ -93,6 +97,7 @@ class InterpreterCore:
             base = dict(env)
         else:
             raise TypeError("env must be dict or None")
+        self._host_membrane.adapt_env_in_place(base)
 
         loader: InterpretedModuleLoader | None = None
         importer = self._restricted_import
@@ -132,6 +137,9 @@ class InterpreterCore:
         else:
             raise TypeError("__builtins__ must be dict, module, or None")
 
+        if self._env_uses_safe_builtins(builtins_dict):
+            self._host_membrane.adapt_env_in_place(globals_dict)
+
         try:
             code = ModuleCode(source, filename)
             scope = ModuleScope(code, globals_dict, builtins_dict)
@@ -139,6 +147,9 @@ class InterpreterCore:
         except BaseException as exc:
             return RunResult(globals=globals_dict, exception=exc)
         return RunResult(globals=globals_dict)
+
+    def _env_uses_safe_builtins(self, builtins_dict: dict[str, Any]) -> bool:
+        return is_safe_builtin_callable(builtins_dict.get("getattr"), "getattr")
 
     def run_or_raise(self, source: str, env: dict, filename: str = "<pynterp>") -> dict:
         result = self.run(source, env, filename)

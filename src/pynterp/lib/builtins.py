@@ -137,8 +137,11 @@ _COMMON_BUILTIN_NAMES = (
 )
 
 
+_USE_FUNCTION_SIGNATURE = object()
+
+
 class SafeExposedCallableBase:
-    __slots__ = ()
+    __slots__ = ("__weakref__",)
 
 
 def wrap_safe_callable(
@@ -147,7 +150,9 @@ def wrap_safe_callable(
     *,
     qualname: str | None = None,
     doc: str | None = None,
-    signature: inspect.Signature | None = None,
+    module: str | None = None,
+    signature: inspect.Signature | None | object = _USE_FUNCTION_SIGNATURE,
+    getitem: Callable[[Any], Any] | None = None,
 ) -> SafeExposedCallableBase:
     class SafeExposedCallable(SafeExposedCallableBase):
         __slots__ = ("__name__", "__qualname__", "__doc__", "__signature__")
@@ -155,12 +160,18 @@ def wrap_safe_callable(
         def __call__(self, *args: Any, **kwargs: Any) -> Any:
             return func(*args, **kwargs)
 
+        def __getitem__(self, item: Any) -> Any:
+            if getitem is None:
+                raise TypeError(f"{type(self).__name__!r} object is not subscriptable")
+            return getitem(item)
+
         def __setattr__(self, name: str, value: Any) -> None:
             raise AttributeError(f"{type(self).__name__!r} object is immutable")
 
         def __delattr__(self, name: str) -> None:
             raise AttributeError(f"{type(self).__name__!r} object is immutable")
 
+    SafeExposedCallable.__module__ = getattr(func, "__module__", __name__) if module is None else module
     wrapped = SafeExposedCallable()
     object.__setattr__(wrapped, "__name__", name)
     object.__setattr__(wrapped, "__qualname__", qualname if qualname is not None else name)
@@ -168,7 +179,7 @@ def wrap_safe_callable(
     object.__setattr__(
         wrapped,
         "__signature__",
-        inspect.signature(func) if signature is None else signature,
+        inspect.signature(func) if signature is _USE_FUNCTION_SIGNATURE else signature,
     )
     return wrapped
 

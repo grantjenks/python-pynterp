@@ -59,6 +59,18 @@ def test_make_default_env_exposes_expanded_common_builtins():
     assert "open" not in builtins_dict
 
 
+def test_make_default_env_wraps_host_env_callables():
+    def double(value):
+        return value * 2
+
+    interpreter = Interpreter()
+    env = interpreter.make_default_env({"DOUBLE": double})
+
+    result = interpreter.run("RESULT = DOUBLE(21)", env=env)
+    assert result.ok
+    assert env["RESULT"] == 42
+
+
 def test_uncaught_system_exit_is_captured():
     interpreter = Interpreter()
     env = interpreter.make_default_env()
