@@ -6,6 +6,8 @@ import pytest
 
 from pynterp import Interpreter
 
+HAS_HOST_ANNOTATE = hasattr(lambda: None, "__annotate__")
+
 
 def run_raises(interp: Interpreter, source: str, *, env: dict, filename: str) -> None:
     interp.run(source, env=env, filename=filename).raise_for_exception()
@@ -13741,7 +13743,7 @@ def h(y: int):
     pass
 
 Sig = type(h.__signature__)
-f = h.builtins["getattr"]
+f = __builtins__["getattr"]
 f.__annotations__ = {{"name": "open({str(flag_path)!r}).read()"}}
 RESULT = Sig.from_callable(f, eval_str=True).parameters["name"].annotation
 """
@@ -13872,3 +13874,73 @@ def test_imported_host_instance_method_annotations_cannot_be_reassigned():
             env=env,
             filename="<imported_host_instance_method_annotations_probe>",
         )
+
+
+@pytest.mark.parametrize(
+    "attr_name",
+    (
+        "builtins",
+        "closure",
+        "code",
+        "globals",
+        "node",
+        "scope_info",
+    ),
+)
+def test_user_function_internal_attrs_are_blocked(attr_name: str):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"ATTR_NAME": attr_name})
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            """
+def f():
+    pass
+
+RESULT = getattr(f, ATTR_NAME)
+""",
+            env=env,
+            filename=f"<user_function_internal_attr_{attr_name}_probe>",
+        )
+
+
+def test_user_function_getstate_escape_is_blocked():
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            """
+def f():
+    pass
+
+RESULT = type(f).__getstate__(f)
+""",
+            env=env,
+            filename="<user_function_getstate_probe>",
+        )
+
+
+@pytest.mark.skipif(not HAS_HOST_ANNOTATE, reason="host __annotate__ requires Python 3.14+")
+def test_host_function_annotate_cannot_be_reassigned_to_drive_signature_eval_str(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{host-annotate-escape}")
+    source = f"""
+def h():
+    pass
+
+host = type(h.__signature__).bind
+host.__annotate__ = lambda _: {{
+    "self": "HOST.__globals__['__builtins__']['open']({str(flag_path)!r}).read()"
+}}
+Sig = type(h.__signature__)
+RESULT = Sig.from_callable(host, eval_str=True, globals={{"HOST": host}}).parameters["self"].annotation
+"""
+    result = interp.run(
+        source,
+        env=env,
+        filename="<host_function_annotate_signature_eval_str_probe>",
+    )
+    assert isinstance(result.exception, AttributeError)

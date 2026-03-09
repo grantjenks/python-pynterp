@@ -21,6 +21,9 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "__func__",
         "__getattr__",
         "__getattribute__",
+        "__getnewargs__",
+        "__getnewargs_ex__",
+        "__getstate__",
         "__globals__",
         "__import__",
         "__loader__",
@@ -29,6 +32,7 @@ _BLOCKED_ATTR_NAMES = frozenset(
         "__reduce_ex__",
         "__self__",
         "__setattr__",
+        "__setstate__",
         "__spec__",
         "ag_code",
         "ag_frame",
@@ -50,6 +54,64 @@ _BLOCKED_ATTR_NAMES = frozenset(
 
 _MISSING = object()
 _RUNTIME_OWNED_OBJECTS: weakref.WeakSet[Any] = weakref.WeakSet()
+
+_RUNTIME_INTERNAL_PRIVATE_ATTR_TYPES = frozenset(
+    {
+        ("pynterp.functions", "BoundMethod"),
+        ("pynterp.functions", "UserFunction"),
+        ("pynterp.helpers", "InterpretedAsyncGenerator"),
+    }
+)
+
+_RUNTIME_INTERNAL_INSTANCE_ATTRS = {
+    ("pynterp.functions", "BoundMethod"): frozenset(
+        {
+            "builtins",
+            "closure",
+            "code",
+            "defaults",
+            "globals",
+            "is_async",
+            "is_async_generator",
+            "is_generator",
+            "kw_defaults",
+            "node",
+            "scope_info",
+        }
+    ),
+    ("pynterp.functions", "UserFunction"): frozenset(
+        {
+            "builtins",
+            "closure",
+            "code",
+            "defaults",
+            "globals",
+            "is_async",
+            "is_async_generator",
+            "is_generator",
+            "kw_defaults",
+            "node",
+            "scope_info",
+        }
+    ),
+}
+
+_RUNTIME_INTERNAL_CLASS_ATTRS = {
+    ("pynterp.helpers", "InterpretedAsyncGenerator"): frozenset(
+        {
+            "_build_throw_exception",
+            "_resume",
+        }
+    ),
+}
+
+_HOST_METADATA_MUTATION_ATTRS = frozenset(
+    {
+        "__annotations__",
+        "__annotate__",
+        "__signature__",
+    }
+)
 
 
 def _normalize_attr_name(name: Any) -> str:
@@ -89,10 +151,51 @@ def _allows_func_attr(obj: Any) -> bool:
     return isinstance(obj, BoundMethod)
 
 
+def _runtime_type_key(obj: Any) -> tuple[str | None, str | None]:
+    try:
+        object.__getattribute__(obj, "__mro__")
+    except AttributeError:
+        cls = object.__getattribute__(obj, "__class__")
+    else:
+        cls = obj
+    try:
+        module = object.__getattribute__(cls, "__module__")
+    except AttributeError:
+        module = None
+    try:
+        name = object.__getattribute__(cls, "__name__")
+    except AttributeError:
+        name = None
+    return module, name
+
+
+def _blocks_runtime_internal_attr(obj: Any, name: str) -> bool:
+    key = _runtime_type_key(obj)
+    if (
+        key in _RUNTIME_INTERNAL_PRIVATE_ATTR_TYPES
+        and name.startswith("_")
+        and not name.startswith("__")
+    ):
+        return True
+    try:
+        object.__getattribute__(obj, "__mro__")
+    except AttributeError:
+        is_type_object = False
+    else:
+        is_type_object = True
+    if is_type_object:
+        return name in _RUNTIME_INTERNAL_CLASS_ATTRS.get(key, ())
+    return name in _RUNTIME_INTERNAL_INSTANCE_ATTRS.get(key, ())
+
+
 def _guard_attr_name_for_object(obj: Any, name: Any) -> str:
     normalized_name = _normalize_attr_name(name)
     if normalized_name == "__func__" and _allows_func_attr(obj):
         return normalized_name
+    if obj is not None and _blocks_runtime_internal_attr(obj, normalized_name):
+        raise AttributeError(
+            f"attribute access to {normalized_name!r} is blocked in this environment"
+        )
     if is_blocked_attr(normalized_name):
         raise AttributeError(
             f"attribute access to {normalized_name!r} is blocked in this environment"
@@ -189,33 +292,38 @@ def safe_vars(*args: Any) -> Any:
     mapping = builtins.vars(*args)
     if not hasattr(mapping, "items"):
         return mapping
+    obj = args[0]
     return {
         key: value
         for key, value in mapping.items()
-        if not isinstance(key, str) or not is_blocked_attr(_normalize_attr_name(key))
+        if not isinstance(key, str)
+        or (
+            not is_blocked_attr(_normalize_attr_name(key))
+            and not _blocks_runtime_internal_attr(obj, _normalize_attr_name(key))
+        )
     }
 
 
-def _guard_host_annotation_mutation(obj: Any, name: str) -> None:
-    if name != "__annotations__":
+def _guard_host_metadata_mutation(obj: Any, name: str) -> None:
+    if name not in _HOST_METADATA_MUTATION_ATTRS:
         return
     if isinstance(obj, types.FunctionType | ModuleType):
         raise AttributeError(
-            "mutation of '__annotations__' on host runtime objects is blocked in this environment"
+            f"mutation of {name!r} on host runtime objects is blocked in this environment"
         )
     if isinstance(obj, type) and not _is_runtime_owned(obj):
         raise AttributeError(
-            "mutation of '__annotations__' on host runtime objects is blocked in this environment"
+            f"mutation of {name!r} on host runtime objects is blocked in this environment"
         )
 
 
 def safe_setattr(obj: Any, name: str, value: Any) -> None:
     name = guard_attr_name(name)
-    _guard_host_annotation_mutation(obj, name)
+    _guard_host_metadata_mutation(obj, name)
     setattr(obj, name, value)
 
 
 def safe_delattr(obj: Any, name: str) -> None:
     name = guard_attr_name(name)
-    _guard_host_annotation_mutation(obj, name)
+    _guard_host_metadata_mutation(obj, name)
     delattr(obj, name)
