@@ -218,20 +218,40 @@ class StatementMixin:
                 generic_params.append(type_param)
         return py_typing.Generic[tuple(generic_params)]
 
+    def _unwrap_runtime_type_value(self, value: Any) -> Any:
+        membrane = getattr(self, "_host_membrane", None)
+        if membrane is None:
+            return value
+        return membrane.unwrap_external_value(value)
+
+    def _runtime_isinstance(self, obj: Any, class_or_tuple: Any) -> bool:
+        membrane = getattr(self, "_host_membrane", None)
+        if membrane is None:
+            return isinstance(obj, class_or_tuple)
+        return membrane.safe_isinstance(obj, class_or_tuple)
+
+    def _runtime_issubclass(self, cls: Any, class_or_tuple: Any) -> bool:
+        membrane = getattr(self, "_host_membrane", None)
+        if membrane is None:
+            return issubclass(cls, class_or_tuple)
+        return membrane.safe_issubclass(cls, class_or_tuple)
+
     def _coerce_raised_exception(self, exc: Any) -> BaseException:
-        if isinstance(exc, BaseException):
-            return exc
-        if isinstance(exc, type) and issubclass(exc, BaseException):
-            return exc()
+        raw_exc = self._unwrap_runtime_type_value(exc)
+        if isinstance(raw_exc, BaseException):
+            return raw_exc
+        if isinstance(raw_exc, type) and issubclass(raw_exc, BaseException):
+            return raw_exc()
         raise TypeError("Can only raise exception instances or exception classes")
 
     def _coerce_raise_cause(self, cause: Any) -> BaseException | None:
         if cause is None:
             return None
-        if isinstance(cause, BaseException):
-            return cause
-        if isinstance(cause, type) and issubclass(cause, BaseException):
-            return cause()
+        raw_cause = self._unwrap_runtime_type_value(cause)
+        if isinstance(raw_cause, BaseException):
+            return raw_cause
+        if isinstance(raw_cause, type) and issubclass(raw_cause, BaseException):
+            return raw_cause()
         raise TypeError("exception causes must derive from BaseException")
 
     def _raise_with_optional_cause(self, exc: Any, cause: Any = _MISSING) -> None:
@@ -741,10 +761,10 @@ class StatementMixin:
         scope: RuntimeScope,
         bindings: Dict[str, Any],
     ) -> bool:
-        cls = self.eval_expr(pattern.cls, scope)
+        cls = self._unwrap_runtime_type_value(self.eval_expr(pattern.cls, scope))
         if not isinstance(cls, type):
             raise TypeError("called match pattern must be a type")
-        if not isinstance(subject, cls):
+        if not self._runtime_isinstance(subject, cls):
             return False
 
         positional_patterns = list(pattern.patterns)
@@ -1071,10 +1091,11 @@ class StatementMixin:
     def _except_star_targets_exception_group(self, exc_type: Any) -> bool:
         if isinstance(exc_type, tuple):
             return any(self._except_star_targets_exception_group(item) for item in exc_type)
-        if not isinstance(exc_type, type):
+        raw_exc_type = self._unwrap_runtime_type_value(exc_type)
+        if not isinstance(raw_exc_type, type):
             return False
         try:
-            return issubclass(exc_type, py_builtins.BaseExceptionGroup)
+            return issubclass(raw_exc_type, py_builtins.BaseExceptionGroup)
         except TypeError:
             return False
 
@@ -1143,7 +1164,7 @@ class StatementMixin:
                     match = True
                 else:
                     exc_type = self.eval_expr(handler.type, scope)
-                    match = isinstance(e, exc_type)
+                    match = self._runtime_isinstance(e, exc_type)
                 if match:
                     handled = True
                     if handler.name:
@@ -1622,7 +1643,7 @@ class StatementMixin:
                     match = True
                 else:
                     exc_type = yield from self.g_eval_expr(handler.type, scope)
-                    match = isinstance(e, exc_type)
+                    match = self._runtime_isinstance(e, exc_type)
                 if match:
                     handled = True
                     if handler.name:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynterp import Interpreter
+from pynterp import Interpreter, expose_class
 
 
 def test_run_requires_explicit_env_dict():
@@ -82,7 +82,7 @@ def test_make_default_env_wraps_host_env_instances_and_preserves_common_reflecti
 
     counter = Counter(4)
     interpreter = Interpreter()
-    env = interpreter.make_default_env({"COUNTER": counter, "CounterType": Counter})
+    env = interpreter.make_default_env({"COUNTER": counter, "CounterType": expose_class(Counter)})
 
     assert env["COUNTER"] is not counter
 
@@ -92,7 +92,7 @@ def test_make_default_env_wraps_host_env_instances_and_preserves_common_reflecti
         "    vars(COUNTER)['value'],\n"
         "    COUNTER.bump(2),\n"
         "    COUNTER.value,\n"
-        "    COUNTER.__class__ is CounterType,\n"
+        "    COUNTER.__class__.__name__ == 'Counter',\n"
         "    isinstance(COUNTER, CounterType),\n"
         ")\n",
         env=env,
@@ -100,6 +100,74 @@ def test_make_default_env_wraps_host_env_instances_and_preserves_common_reflecti
     assert result.ok
     assert env["RESULT"] == (7, 9, 9, True, True)
     assert counter.value == 9
+
+
+def test_make_default_env_rejects_raw_host_classes():
+    class Counter:
+        pass
+
+    interpreter = Interpreter()
+    with pytest.raises(TypeError, match="expose_class"):
+        interpreter.make_default_env({"CounterType": Counter})
+
+
+def test_make_default_env_rejects_nested_raw_host_classes():
+    class Counter:
+        pass
+
+    interpreter = Interpreter()
+    with pytest.raises(TypeError, match="expose_class"):
+        interpreter.make_default_env({"payload": {"CounterType": Counter}})
+
+
+def test_make_default_env_exposed_host_classes_are_constructor_only():
+    class Counter:
+        def __init__(self, value):
+            self.value = value
+
+    interpreter = Interpreter()
+    env = interpreter.make_default_env({"CounterType": expose_class(Counter)})
+
+    result = interpreter.run(
+        "counter = CounterType(4)\n"
+        "RESULT = (counter.value, isinstance(counter, CounterType), callable(CounterType))\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] == (4, True, True)
+
+
+def test_make_default_env_exposed_host_classes_cannot_be_subclassed():
+    class Counter:
+        pass
+
+    interpreter = Interpreter()
+    env = interpreter.make_default_env({"CounterType": expose_class(Counter)})
+
+    result = interpreter.run(
+        "class Child(CounterType):\n"
+        "    pass\n",
+        env=env,
+    )
+    assert isinstance(result.exception, TypeError)
+    assert "constructor-only" in str(result.exception)
+
+
+def test_make_default_env_exposed_host_classes_can_opt_into_subclassing():
+    class Counter:
+        pass
+
+    interpreter = Interpreter()
+    env = interpreter.make_default_env({"CounterType": expose_class(Counter, subclassable=True)})
+
+    result = interpreter.run(
+        "class Child(CounterType):\n"
+        "    pass\n"
+        "RESULT = issubclass(Child, CounterType)\n",
+        env=env,
+    )
+    assert result.ok
+    assert env["RESULT"] is True
 
 
 def test_imported_host_class_instances_are_wrapped_on_call_result():

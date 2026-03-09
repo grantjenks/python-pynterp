@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from pynterp import Interpreter
+from pynterp import Interpreter, expose_class
 
 HAS_TEMPLATE_STR = hasattr(ast, "TemplateStr")
 HAS_TYPE_ALIAS = hasattr(ast, "TypeAlias")
@@ -647,7 +647,7 @@ RESULT = (
     "VALUE" in C.assignment_order,
 )
 """
-    env = run_interpreter(source, env={"classmethod": classmethod})
+    env = run_interpreter(source, env={"classmethod": expose_class(classmethod)})
     assert env["RESULT"] == ("PreparedNamespace", "ok", True, True, True)
 
 
@@ -1717,7 +1717,7 @@ async def run():
 
 CORO = run()
 """
-    env = run_interpreter(source, env={"StopAsyncIteration": StopAsyncIteration})
+    env = run_interpreter(source, env={"StopAsyncIteration": expose_class(StopAsyncIteration)})
     with pytest.raises(RuntimeError, match="async generator raised StopAsyncIteration") as exc_info:
         env["CORO"].send(None)
     assert isinstance(exc_info.value.__cause__, StopAsyncIteration)
@@ -1826,7 +1826,10 @@ def run():
 run()
 """
     with pytest.raises(KeyError, match="inner"):
-        run_interpreter(source, env={"TypeError": TypeError, "KeyError": KeyError})
+        run_interpreter(
+            source,
+            env={"TypeError": expose_class(TypeError), "KeyError": expose_class(KeyError)},
+        )
 
 
 def test_bare_raise_in_finally_after_except_return_has_no_active_exception(run_interpreter):
@@ -1865,7 +1868,7 @@ except ValueError as exc:
 
 def test_raise_from_invalid_cause_raises_typeerror(run_interpreter):
     with pytest.raises(TypeError, match="exception cause"):
-        run_interpreter("raise IndexError from 5", env={"IndexError": IndexError})
+        run_interpreter("raise IndexError from 5", env={"IndexError": expose_class(IndexError)})
 
 
 def test_raise_from_class_cause_sets_exception_cause(run_interpreter):
@@ -1875,7 +1878,10 @@ try:
 except IndexError as exc:
     RESULT = isinstance(exc.__cause__, KeyError)
 """
-    env = run_interpreter(source, env={"IndexError": IndexError, "KeyError": KeyError})
+    env = run_interpreter(
+        source,
+        env={"IndexError": expose_class(IndexError), "KeyError": expose_class(KeyError)},
+    )
     assert env["RESULT"] is True
 
 
@@ -1887,7 +1893,7 @@ def run():
 
 GEN = run()
 """
-    env = run_interpreter(source, env={"IndexError": IndexError})
+    env = run_interpreter(source, env={"IndexError": expose_class(IndexError)})
     with pytest.raises(TypeError, match="exception cause"):
         next(env["GEN"])
 

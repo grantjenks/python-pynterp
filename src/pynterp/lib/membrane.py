@@ -37,6 +37,7 @@ _HIDDEN_TYPE_PROXY_ATTRS = frozenset(
     {
         "_SafeTypeProxy__membrane",
         "_SafeTypeProxy__raw",
+        "_SafeTypeProxy__subclassable",
     }
 )
 
@@ -78,7 +79,6 @@ _LOCAL_OBJECT_PROXY_ATTRS = frozenset(
 _LOCAL_TYPE_PROXY_ATTRS = frozenset(
     {
         "__call__",
-        "__class__",
         "__delattr__",
         "__dir__",
         "__eq__",
@@ -106,6 +106,18 @@ _LOCAL_TYPE_PROXY_ATTRS = frozenset(
 class _ModuleProxyState:
     raw: ModuleType
     membrane: "HostMembrane"
+
+
+@dataclass(frozen=True, slots=True)
+class ExposedHostClass:
+    raw: type[Any]
+    subclassable: bool = False
+
+
+def expose_class(cls: type[Any], *, subclassable: bool = False) -> ExposedHostClass:
+    if not isinstance(cls, type):
+        raise TypeError("expose_class() expected a class object")
+    return ExposedHostClass(raw=cls, subclassable=subclassable)
 
 
 _MODULE_PROXY_STATES: "weakref.WeakKeyDictionary[SafeModuleProxy, _ModuleProxyState]" = (
@@ -159,6 +171,10 @@ def _type_proxy_raw(proxy: "SafeTypeProxy") -> type[Any]:
 
 def _type_proxy_membrane(proxy: "SafeTypeProxy") -> "HostMembrane":
     return object.__getattribute__(proxy, "_SafeTypeProxy__membrane")
+
+
+def _type_proxy_subclassable(proxy: "SafeTypeProxy") -> bool:
+    return object.__getattribute__(proxy, "_SafeTypeProxy__subclassable")
 
 
 class SafeObjectProxy:
@@ -300,11 +316,7 @@ class SafeObjectProxy:
 
 
 class SafeTypeProxy:
-    __slots__ = ("__raw", "__membrane")
-
-    @property
-    def __class__(self) -> type[type[Any]]:
-        return type(_type_proxy_raw(self))
+    __slots__ = ("__raw", "__membrane", "__subclassable")
 
     @property
     def __module__(self) -> str | None:
@@ -334,6 +346,11 @@ class SafeTypeProxy:
         return membrane.expose_external_value(_type_proxy_raw(self)[raw_item], wrap_types=True)
 
     def __mro_entries__(self, bases: tuple[Any, ...]) -> tuple[type[Any], ...]:
+        if not _type_proxy_subclassable(self):
+            raise TypeError(
+                "host classes exposed through env are constructor-only; wrap explicitly with "
+                "expose_class(..., subclassable=True) to allow subclassing"
+            )
         return (_type_proxy_raw(self),)
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -401,7 +418,7 @@ class HostMembrane:
         )
         self._module_cache: dict[int, tuple[ModuleType, SafeModuleProxy]] = {}
         self._object_cache: dict[int, tuple[Any, SafeObjectProxy]] = {}
-        self._type_cache: dict[int, tuple[type[Any], SafeTypeProxy]] = {}
+        self._type_cache: dict[tuple[int, bool], tuple[type[Any], SafeTypeProxy]] = {}
 
     def expose_external_value(
         self,
@@ -409,9 +426,26 @@ class HostMembrane:
         *,
         memo: dict[int, Any] | None = None,
         wrap_types: bool = False,
+        reject_raw_types: bool = False,
     ) -> Any:
+        if isinstance(value, ExposedHostClass):
+            return self._wrap_type(value.raw, subclassable=value.subclassable)
+
+        if (
+            reject_raw_types
+            and isinstance(value, type)
+            and not isinstance(
+                value,
+                SafeExposedCallableBase | SafeModuleProxy | SafeObjectProxy | SafeTypeProxy,
+            )
+            and not self._is_internal_interpreter_value(value)
+        ):
+            raise TypeError(
+                "raw host classes are not allowed in safe env; wrap them with pynterp.expose_class(...)"
+            )
+
         if wrap_types and isinstance(value, type) and not self._is_internal_interpreter_value(value):
-            return self._wrap_type(value)
+            return self._wrap_type(value, subclassable=True)
 
         if self._is_passthrough_value(value):
             return value
@@ -434,7 +468,12 @@ class HostMembrane:
             out: list[Any] = []
             memo[obj_id] = out
             out.extend(
-                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                self.expose_external_value(
+                    item,
+                    memo=memo,
+                    wrap_types=wrap_types,
+                    reject_raw_types=reject_raw_types,
+                )
                 for item in value
             )
             return out
@@ -443,7 +482,12 @@ class HostMembrane:
             out: list[Any] = []
             memo[obj_id] = out
             result = tuple(
-                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                self.expose_external_value(
+                    item,
+                    memo=memo,
+                    wrap_types=wrap_types,
+                    reject_raw_types=reject_raw_types,
+                )
                 for item in value
             )
             memo[obj_id] = result
@@ -453,14 +497,26 @@ class HostMembrane:
             out: set[Any] = set()
             memo[obj_id] = out
             for item in value:
-                out.add(self.expose_external_value(item, memo=memo, wrap_types=wrap_types))
+                out.add(
+                    self.expose_external_value(
+                        item,
+                        memo=memo,
+                        wrap_types=wrap_types,
+                        reject_raw_types=reject_raw_types,
+                    )
+                )
             return out
 
         if isinstance(value, frozenset):
             out: set[Any] = set()
             memo[obj_id] = out
             result = frozenset(
-                self.expose_external_value(item, memo=memo, wrap_types=wrap_types)
+                self.expose_external_value(
+                    item,
+                    memo=memo,
+                    wrap_types=wrap_types,
+                    reject_raw_types=reject_raw_types,
+                )
                 for item in value
             )
             memo[obj_id] = result
@@ -470,10 +526,18 @@ class HostMembrane:
             out: dict[Any, Any] = {}
             memo[obj_id] = out
             for key, item in value.items():
-                out[self.expose_external_value(key, memo=memo, wrap_types=wrap_types)] = self.expose_external_value(
+                out[
+                    self.expose_external_value(
+                        key,
+                        memo=memo,
+                        wrap_types=wrap_types,
+                        reject_raw_types=reject_raw_types,
+                    )
+                ] = self.expose_external_value(
                     item,
                     memo=memo,
                     wrap_types=wrap_types,
+                    reject_raw_types=reject_raw_types,
                 )
             return out
 
@@ -483,7 +547,7 @@ class HostMembrane:
         for key, value in tuple(env.items()):
             if key == "__builtins__":
                 continue
-            env[key] = self.expose_external_value(value)
+            env[key] = self.expose_external_value(value, reject_raw_types=True)
 
     def unwrap_external_value(self, value: Any, *, memo: dict[int, Any] | None = None) -> Any:
         if memo is None:
@@ -634,8 +698,9 @@ class HostMembrane:
         self._object_cache[id(value)] = (value, wrapper)
         return wrapper
 
-    def _wrap_type(self, value: type[Any]) -> SafeTypeProxy:
-        cached_entry = self._type_cache.get(id(value))
+    def _wrap_type(self, value: type[Any], *, subclassable: bool) -> SafeTypeProxy:
+        cache_key = (id(value), subclassable)
+        cached_entry = self._type_cache.get(cache_key)
         if cached_entry is not None:
             cached_raw, cached_wrapper = cached_entry
             if cached_raw is value:
@@ -644,11 +709,14 @@ class HostMembrane:
         wrapper = SafeTypeProxy()
         object.__setattr__(wrapper, "_SafeTypeProxy__raw", value)
         object.__setattr__(wrapper, "_SafeTypeProxy__membrane", self)
-        self._type_cache[id(value)] = (value, wrapper)
+        object.__setattr__(wrapper, "_SafeTypeProxy__subclassable", subclassable)
+        self._type_cache[cache_key] = (value, wrapper)
         return wrapper
 
     def _is_passthrough_value(self, value: Any) -> bool:
         if value is None or isinstance(value, (bool, int, float, complex, str, bytes, bytearray)):
+            return True
+        if isinstance(value, (classmethod, staticmethod, property)):
             return True
         if isinstance(value, BaseException):
             return True

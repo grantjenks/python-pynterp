@@ -123,6 +123,33 @@ Out of scope: CPU/memory/time quotas and process/kernel isolation.
 - `~711` tests across CLI behavior, semantics, security hardening, keyword binding, `super()` semantics, bootstrap/self-interpretation checks, and probe correctness
 - large dedicated security suite exercises reflective escape attempts and descriptor rebound edge cases
 
+## Caveats
+
+Safe envs intentionally distinguish between host functions, host instances, and host classes:
+
+- host functions passed through `env` are wrapped automatically
+- host instances passed through `env` are wrapped automatically
+- raw host classes passed through `env` are rejected by default
+
+The class restriction is deliberate. Classes participate in Python's type system, class construction, metaclass selection, and descriptor binding, so treating arbitrary host classes like ordinary values creates a much larger escape surface than host functions or instances.
+
+If you want interpreted code to construct and use a host class, wrap it explicitly:
+
+```pycon
+>>> from pynterp import Interpreter, expose_class
+>>> interpreter = Interpreter()
+>>> env = interpreter.make_default_env({"PathLike": expose_class(MyHostClass)})
+```
+
+That explicit wrapper is constructor-only by default:
+
+- interpreted code can call `PathLike(...)`
+- returned instances are membrane-wrapped
+- `isinstance(x, PathLike)` and `issubclass(...)` continue to work inside safe envs
+- `class Child(PathLike): ...` is rejected unless class subclassing is explicitly opted into
+
+Imported safe-stdlib classes are membrane-wrapped separately and are not subject to the raw-`env` rejection rule above.
+
 ## CPython compatibility probe
 
 Probe script: [`scripts/cpython_pynterp_probe.py`](scripts/cpython_pynterp_probe.py)
