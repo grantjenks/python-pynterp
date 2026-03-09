@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -13861,6 +13862,42 @@ RESULT = Sig.from_callable(HELPER, eval_str=True).parameters["value"].annotation
 """,
             env=env,
             filename="<signature_from_callable_eval_str_host_env_function_probe>",
+        )
+
+
+def test_host_function_annotations_mapping_cannot_drive_signature_eval_str_in_place(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{host-annotations-mapping-escape}")
+    with pytest.raises(TypeError):
+        run_raises(
+            interp,
+            f"""
+def h():
+    pass
+
+host = type(h.__signature__).bind
+host.__annotations__["self"] = "I.__self__._restricted_import.__globals__['__builtins__']['open']({str(flag_path)!r}).read()"
+""",
+            env=env,
+            filename="<host_function_annotations_mapping_probe>",
+        )
+
+
+def test_vars_host_module_annotations_mapping_is_read_only():
+    module = ModuleType("helper_mod")
+    module.__annotations__ = {"value": int}
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"MOD": module})
+    with pytest.raises(TypeError):
+        run_raises(
+            interp,
+            """
+vars(MOD)["__annotations__"]["value"] = "1 + 2"
+""",
+            env=env,
+            filename="<vars_host_module_annotations_mapping_probe>",
         )
 
 

@@ -109,6 +109,8 @@ _HOST_METADATA_MUTATION_ATTRS = frozenset(
     {
         "__annotations__",
         "__annotate__",
+        "__defaults__",
+        "__kwdefaults__",
         "__signature__",
     }
 )
@@ -141,6 +143,22 @@ def _is_runtime_owned(obj: Any) -> bool:
         return obj in _RUNTIME_OWNED_OBJECTS
     except TypeError:
         return False
+
+
+def _is_host_metadata_owner(obj: Any) -> bool:
+    if isinstance(obj, types.FunctionType | ModuleType):
+        return True
+    return isinstance(obj, type) and not _is_runtime_owned(obj)
+
+
+def _sanitize_host_metadata_value(obj: Any, name: str, value: Any) -> Any:
+    if not _is_host_metadata_owner(obj):
+        return value
+    if name == "__annotations__" and isinstance(value, dict):
+        return types.MappingProxyType(dict(value))
+    if name == "__kwdefaults__" and isinstance(obj, types.FunctionType) and isinstance(value, dict):
+        return types.MappingProxyType(dict(value))
+    return value
 
 
 def _allows_func_attr(obj: Any) -> bool:
@@ -276,9 +294,13 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
         return guarded_getattribute
 
     name = _guard_attr_name_for_object(obj, name)
-    if default:
-        return getattr(obj, name, *default)
-    return getattr(obj, name)
+    try:
+        value = getattr(obj, name)
+    except AttributeError:
+        if default:
+            return default[0]
+        raise
+    return _sanitize_host_metadata_value(obj, name, value)
 
 
 def safe_hasattr(obj: Any, name: str) -> bool:
@@ -294,7 +316,11 @@ def safe_vars(*args: Any) -> Any:
         return mapping
     obj = args[0]
     return {
-        key: value
+        key: (
+            _sanitize_host_metadata_value(obj, _normalize_attr_name(key), value)
+            if isinstance(key, str)
+            else value
+        )
         for key, value in mapping.items()
         if not isinstance(key, str)
         or (
