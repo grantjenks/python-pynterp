@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import builtins
 import inspect
+import types
+import weakref
+from types import ModuleType
 from typing import Any
 
 # Runtime internals and reflective dunders below are common pivot points for
@@ -46,6 +49,7 @@ _BLOCKED_ATTR_NAMES = frozenset(
 )
 
 _MISSING = object()
+_RUNTIME_OWNED_OBJECTS: weakref.WeakSet[Any] = weakref.WeakSet()
 
 
 def _normalize_attr_name(name: Any) -> str:
@@ -60,6 +64,21 @@ def _normalize_attr_name(name: Any) -> str:
 
 def is_blocked_attr(name: str) -> bool:
     return name in _BLOCKED_ATTR_NAMES
+
+
+def mark_runtime_owned(obj: Any) -> Any:
+    try:
+        _RUNTIME_OWNED_OBJECTS.add(obj)
+    except TypeError:
+        pass
+    return obj
+
+
+def _is_runtime_owned(obj: Any) -> bool:
+    try:
+        return obj in _RUNTIME_OWNED_OBJECTS
+    except TypeError:
+        return False
 
 
 def _allows_func_attr(obj: Any) -> bool:
@@ -177,11 +196,26 @@ def safe_vars(*args: Any) -> Any:
     }
 
 
+def _guard_host_annotation_mutation(obj: Any, name: str) -> None:
+    if name != "__annotations__":
+        return
+    if isinstance(obj, types.FunctionType | ModuleType):
+        raise AttributeError(
+            "mutation of '__annotations__' on host runtime objects is blocked in this environment"
+        )
+    if isinstance(obj, type) and not _is_runtime_owned(obj):
+        raise AttributeError(
+            "mutation of '__annotations__' on host runtime objects is blocked in this environment"
+        )
+
+
 def safe_setattr(obj: Any, name: str, value: Any) -> None:
     name = guard_attr_name(name)
+    _guard_host_annotation_mutation(obj, name)
     setattr(obj, name, value)
 
 
 def safe_delattr(obj: Any, name: str) -> None:
     name = guard_attr_name(name)
+    _guard_host_annotation_mutation(obj, name)
     delattr(obj, name)

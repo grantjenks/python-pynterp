@@ -137,12 +137,19 @@ _COMMON_BUILTIN_NAMES = (
 )
 
 
-class SafeBuiltinCallableBase:
+class SafeExposedCallableBase:
     __slots__ = ()
 
 
-def _wrap_safe_builtin(name: str, func: Callable[..., Any]) -> SafeBuiltinCallableBase:
-    class SafeBuiltinCallable(SafeBuiltinCallableBase):
+def wrap_safe_callable(
+    name: str,
+    func: Callable[..., Any],
+    *,
+    qualname: str | None = None,
+    doc: str | None = None,
+    signature: inspect.Signature | None = None,
+) -> SafeExposedCallableBase:
+    class SafeExposedCallable(SafeExposedCallableBase):
         __slots__ = ("__name__", "__qualname__", "__doc__", "__signature__")
 
         def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -154,23 +161,27 @@ def _wrap_safe_builtin(name: str, func: Callable[..., Any]) -> SafeBuiltinCallab
         def __delattr__(self, name: str) -> None:
             raise AttributeError(f"{type(self).__name__!r} object is immutable")
 
-    wrapped = SafeBuiltinCallable()
+    wrapped = SafeExposedCallable()
     object.__setattr__(wrapped, "__name__", name)
-    object.__setattr__(wrapped, "__qualname__", name)
-    object.__setattr__(wrapped, "__doc__", getattr(func, "__doc__", None))
-    object.__setattr__(wrapped, "__signature__", inspect.signature(func))
+    object.__setattr__(wrapped, "__qualname__", qualname if qualname is not None else name)
+    object.__setattr__(wrapped, "__doc__", getattr(func, "__doc__", None) if doc is None else doc)
+    object.__setattr__(
+        wrapped,
+        "__signature__",
+        inspect.signature(func) if signature is None else signature,
+    )
     return wrapped
 
 
-SAFE_GETATTR = _wrap_safe_builtin("getattr", safe_getattr)
-SAFE_HASATTR = _wrap_safe_builtin("hasattr", safe_hasattr)
-SAFE_SETATTR = _wrap_safe_builtin("setattr", safe_setattr)
-SAFE_DELATTR = _wrap_safe_builtin("delattr", safe_delattr)
-SAFE_VARS = _wrap_safe_builtin("vars", safe_vars)
+SAFE_GETATTR = wrap_safe_callable("getattr", safe_getattr)
+SAFE_HASATTR = wrap_safe_callable("hasattr", safe_hasattr)
+SAFE_SETATTR = wrap_safe_callable("setattr", safe_setattr)
+SAFE_DELATTR = wrap_safe_callable("delattr", safe_delattr)
+SAFE_VARS = wrap_safe_callable("vars", safe_vars)
 
 
 def is_safe_builtin_callable(value: Any, name: str | None = None) -> bool:
-    if not isinstance(value, SafeBuiltinCallableBase):
+    if not isinstance(value, SafeExposedCallableBase):
         return False
     if name is None:
         return True

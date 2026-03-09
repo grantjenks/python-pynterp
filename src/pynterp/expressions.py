@@ -8,7 +8,7 @@ from .common import NO_DEFAULT, UNBOUND, AwaitRequest
 from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
 from .host_exec import safe_host_eval, safe_host_exec
-from .lib.builtins import is_safe_builtin_callable
+from .lib.builtins import is_safe_builtin_callable, wrap_safe_callable
 from .lib.guards import safe_getattr, safe_vars
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
@@ -47,7 +47,7 @@ class ExpressionMixin:
         def __annotate__(format, /):
             return dict(frozen_annotations)
 
-        locals_ns["__annotate__"] = __annotate__
+        locals_ns["__annotate__"] = wrap_safe_callable("__annotate__", __annotate__)
         del locals_ns["__annotations__"]
 
     def _maybe_fix_typing_runtime_module(self, func: Any, result: Any, scope: RuntimeScope) -> Any:

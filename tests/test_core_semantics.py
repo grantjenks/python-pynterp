@@ -833,6 +833,18 @@ RESULT = (callable(f.__annotate__), f.__annotate__(1))
     assert env["RESULT"] == (True, {"value": int})
 
 
+def test_user_function_annotations_assignment_remains_allowed(run_interpreter):
+    source = """
+def f(value: int):
+    return value
+
+f.__annotations__ = {"value": str, "return": bytes}
+RESULT = f.__annotations__
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == {"value": str, "return": bytes}
+
+
 def test_unresolved_function_annotations_are_deferred_as_source_strings(run_interpreter):
     source = """
 def f(value: MissingType):
@@ -842,6 +854,18 @@ RESULT = (f.__annotations__, f.__annotate__(1))
 """
     env = run_interpreter(source)
     assert env["RESULT"] == ({"value": "MissingType"}, {"value": "MissingType"})
+
+
+def test_user_defined_class_annotations_assignment_remains_allowed(run_interpreter):
+    source = """
+class Box:
+    pass
+
+Box.__annotations__ = {"value": int}
+RESULT = Box.__annotations__
+"""
+    env = run_interpreter(source)
+    assert env["RESULT"] == {"value": int}
 
 
 def test_function_local_annassign_does_not_evaluate_annotation_expression(run_interpreter):

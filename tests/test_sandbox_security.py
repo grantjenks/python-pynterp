@@ -13751,3 +13751,61 @@ RESULT = Sig.from_callable(f, eval_str=True).parameters["name"].annotation
         filename="<signature_from_callable_eval_str_safe_getattr_annotation_probe>",
     )
     assert isinstance(result.exception, AttributeError)
+
+
+def test_signature_from_callable_eval_str_cannot_mutate_user_function_annotate(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{annotate-eval-escape}")
+    source = f"""
+def h(y: int):
+    pass
+
+Sig = type(h.__signature__)
+f = h.__annotate__
+f.__annotations__ = {{"format": "open({str(flag_path)!r}).read()"}}
+RESULT = Sig.from_callable(f, eval_str=True).parameters["format"].annotation
+"""
+    result = interp.run(
+        source,
+        env=env,
+        filename="<signature_from_callable_eval_str_user_function_annotate_probe>",
+    )
+    assert isinstance(result.exception, AttributeError)
+
+
+def test_host_module_function_annotations_cannot_be_reassigned():
+    interp = Interpreter(allowed_imports={"inspect"})
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'import inspect\ninspect.unwrap.__annotations__ = {"func": "1 + 2"}',
+            env=env,
+            filename="<host_module_function_annotations_probe>",
+        )
+
+
+def test_host_module_annotations_cannot_be_reassigned():
+    interp = Interpreter(allowed_imports={"inspect"})
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'import inspect\ninspect.__annotations__ = {"value": "1 + 2"}',
+            env=env,
+            filename="<host_module_annotations_probe>",
+        )
+
+
+def test_host_class_annotations_cannot_be_reassigned():
+    interp = Interpreter(allowed_imports={"dataclasses"})
+    env = interp.make_default_env()
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            'import dataclasses\ndataclasses.Field.__annotations__ = {"value": "1 + 2"}',
+            env=env,
+            filename="<host_class_annotations_probe>",
+        )

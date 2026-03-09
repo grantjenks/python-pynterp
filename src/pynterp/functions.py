@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict
 from .code import ModuleCode, ScopeInfo
 from .common import NO_DEFAULT, Cell
 from .host_exec import safe_host_exec
+from .lib.builtins import wrap_safe_callable
 
 if TYPE_CHECKING:
     from .main import Interpreter
@@ -161,7 +162,12 @@ def _make_user_function_annotate(user_function: "UserFunction"):
     def __annotate__(format, /):
         return dict(user_function.__annotations__)
 
-    return __annotate__
+    qualname = getattr(user_function, "__qualname__", "__annotate__")
+    return wrap_safe_callable(
+        "__annotate__",
+        __annotate__,
+        qualname=f"{qualname}.__annotate__",
+    )
 
 
 def adapt_user_function_for_interpreters_run_func(func: "UserFunction") -> Any:

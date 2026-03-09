@@ -19,6 +19,7 @@ from .common import (
 )
 from .functions import UserFunction
 from .host_exec import safe_host_eval, safe_host_exec
+from .lib.guards import mark_runtime_owned
 from .scopes import ClassBodyScope, FunctionScope, RuntimeScope
 from .symtable_utils import _contains_yield
 
@@ -1057,7 +1058,7 @@ class StatementMixin:
         self.exec_block(node.body, body_scope)
         self._normalize_class_namespace(class_ns)
 
-        cls = meta(node.name, bases, class_ns, **kw)
+        cls = mark_runtime_owned(meta(node.name, bases, class_ns, **kw))
         class_cell.value = cls
 
         decorated: Any = cls
@@ -1596,7 +1597,7 @@ class StatementMixin:
         self.exec_block(node.body, body_scope)
         self._normalize_class_namespace(class_ns)
 
-        cls = meta(node.name, bases, class_ns, **kw)
+        cls = mark_runtime_owned(meta(node.name, bases, class_ns, **kw))
         class_cell.value = cls
 
         decorated: Any = cls
