@@ -152,6 +152,8 @@ def _is_host_metadata_owner(obj: Any) -> bool:
 
 
 def _sanitize_host_metadata_value(obj: Any, name: str, value: Any) -> Any:
+    if name not in {"__annotations__", "__kwdefaults__"}:
+        return value
     if not _is_host_metadata_owner(obj):
         return value
     if name == "__annotations__" and isinstance(value, dict):
@@ -159,6 +161,17 @@ def _sanitize_host_metadata_value(obj: Any, name: str, value: Any) -> Any:
     if name == "__kwdefaults__" and isinstance(obj, types.FunctionType) and isinstance(value, dict):
         return types.MappingProxyType(dict(value))
     return value
+
+
+def _metadata_owner_for_getattribute_target(target: Any) -> Any:
+    if type(target) is super:
+        try:
+            super_self = object.__getattribute__(target, "__self__")
+        except AttributeError:
+            return target
+        if super_self is not None:
+            return super_self
+    return target
 
 
 def _allows_func_attr(obj: Any) -> bool:
@@ -282,14 +295,21 @@ def safe_getattr(obj: Any, name: str, *default: Any) -> Any:
                 elif not raw_is_bound and len(args) > 1:
                     call_args = (args[0], attr_name) + args[2:]
 
+            metadata_owner = (
+                _metadata_owner_for_getattribute_target(target) if target is not _MISSING else None
+            )
             if use_object_fallback and target is not _MISSING and attr_name is not _MISSING:
                 resolved = inspect.getattr_static(target, attr_name)
                 descriptor_get = getattr(type(resolved), "__get__", None)
                 if descriptor_get is None:
-                    return resolved
-                return descriptor_get(resolved, target, type(target))
+                    return _sanitize_host_metadata_value(metadata_owner, attr_name, resolved)
+                value = descriptor_get(resolved, target, type(target))
+                return _sanitize_host_metadata_value(metadata_owner, attr_name, value)
 
-            return raw_getattribute(*call_args, **call_kwargs)
+            value = raw_getattribute(*call_args, **call_kwargs)
+            if attr_name is _MISSING:
+                return value
+            return _sanitize_host_metadata_value(metadata_owner, attr_name, value)
 
         return guarded_getattribute
 

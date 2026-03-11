@@ -13778,6 +13778,39 @@ RESULT = Sig.from_callable(f, eval_str=True).parameters["format"].annotation
     assert isinstance(result.exception, AttributeError)
 
 
+@pytest.mark.parametrize(
+    "annotations_expr",
+    (
+        'type(host).__getattribute__(host, "__annotations__")',
+        'object.__getattribute__(host, "__annotations__")',
+        'super(type(host), host).__getattribute__("__annotations__")',
+    ),
+)
+def test_signature_from_callable_eval_str_cannot_mutate_host_annotations_via_getattribute(
+    tmp_path: Path, annotations_expr: str
+):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{host-getattribute-annotations-escape}")
+    source = f"""
+def h():
+    pass
+
+Sig = type(h.__signature__)
+host = Sig.bind
+anns = {annotations_expr}
+anns["self"] = "__builtins__['open']({str(flag_path)!r}).read()"
+RESULT = Sig.from_callable(host, eval_str=True).parameters["self"].annotation
+"""
+    result = interp.run(
+        source,
+        env=env,
+        filename="<signature_from_callable_eval_str_host_annotations_getattribute_probe>",
+    )
+    assert isinstance(result.exception, TypeError)
+
+
 def test_host_module_function_annotations_cannot_be_reassigned():
     interp = Interpreter(allowed_imports={"inspect"})
     env = interp.make_default_env()
