@@ -83,7 +83,7 @@ gcloud config set project "$PROJECT_ID"
 export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 export DEPLOYER_EMAIL="$(gcloud config get-value account)"
 export RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-export IMAGE_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE}:0.3.1"
+export IMAGE_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE}:0.3.2"
 ```
 
 ### 3. Enable required APIs
