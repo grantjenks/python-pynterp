@@ -145,7 +145,17 @@ def _is_runtime_owned(obj: Any) -> bool:
         return False
 
 
+def _metadata_owner_target(obj: Any) -> Any:
+    if type(obj) is types.MethodType:
+        try:
+            return object.__getattribute__(obj, "__func__")
+        except AttributeError:
+            return obj
+    return obj
+
+
 def _is_host_metadata_owner(obj: Any) -> bool:
+    obj = _metadata_owner_target(obj)
     if isinstance(obj, types.FunctionType | ModuleType):
         return True
     return isinstance(obj, type) and not _is_runtime_owned(obj)
@@ -154,11 +164,16 @@ def _is_host_metadata_owner(obj: Any) -> bool:
 def _sanitize_host_metadata_value(obj: Any, name: str, value: Any) -> Any:
     if name not in {"__annotations__", "__kwdefaults__"}:
         return value
-    if not _is_host_metadata_owner(obj):
+    owner = _metadata_owner_target(obj)
+    if not _is_host_metadata_owner(owner):
         return value
     if name == "__annotations__" and isinstance(value, dict):
         return types.MappingProxyType(dict(value))
-    if name == "__kwdefaults__" and isinstance(obj, types.FunctionType) and isinstance(value, dict):
+    if (
+        name == "__kwdefaults__"
+        and isinstance(owner, types.FunctionType)
+        and isinstance(value, dict)
+    ):
         return types.MappingProxyType(dict(value))
     return value
 
@@ -170,8 +185,8 @@ def _metadata_owner_for_getattribute_target(target: Any) -> Any:
         except AttributeError:
             return target
         if super_self is not None:
-            return super_self
-    return target
+            return _metadata_owner_target(super_self)
+    return _metadata_owner_target(target)
 
 
 def _allows_func_attr(obj: Any) -> bool:
@@ -353,11 +368,12 @@ def safe_vars(*args: Any) -> Any:
 def _guard_host_metadata_mutation(obj: Any, name: str) -> None:
     if name not in _HOST_METADATA_MUTATION_ATTRS:
         return
-    if isinstance(obj, types.FunctionType | ModuleType):
+    owner = _metadata_owner_target(obj)
+    if isinstance(owner, types.FunctionType | ModuleType):
         raise AttributeError(
             f"mutation of {name!r} on host runtime objects is blocked in this environment"
         )
-    if isinstance(obj, type) and not _is_runtime_owned(obj):
+    if isinstance(owner, type) and not _is_runtime_owned(owner):
         raise AttributeError(
             f"mutation of {name!r} on host runtime objects is blocked in this environment"
         )

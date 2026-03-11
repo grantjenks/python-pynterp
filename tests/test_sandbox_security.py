@@ -13918,6 +13918,29 @@ host.__annotations__["self"] = "I.__self__._restricted_import.__globals__['__bui
         )
 
 
+def test_host_bound_method_annotations_mapping_cannot_drive_signature_eval_str_in_place(
+    tmp_path: Path,
+):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{host-bound-method-annotations-escape}")
+    with pytest.raises(TypeError):
+        run_raises(
+            interp,
+            f"""
+def h():
+    pass
+
+Sig = type(h.__signature__)
+host = Sig.from_callable
+host.__annotations__["obj"] = "__builtins__['open']({str(flag_path)!r}).read()"
+""",
+            env=env,
+            filename="<host_bound_method_annotations_mapping_probe>",
+        )
+
+
 def test_vars_host_module_annotations_mapping_is_read_only():
     module = ModuleType("helper_mod")
     module.__annotations__ = {"value": int}
