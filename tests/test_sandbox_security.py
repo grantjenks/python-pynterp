@@ -13878,6 +13878,34 @@ def test_host_env_instance_method_annotations_cannot_be_reassigned():
         )
 
 
+@pytest.mark.parametrize("wrapper_name", ("staticmethod", "classmethod"))
+def test_host_function_annotations_mapping_cannot_be_mutated_via_descriptor_wrapper(
+    tmp_path: Path, wrapper_name: str
+):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"WRAPPER_NAME": wrapper_name})
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{descriptor-wrapper-annotations-escape}")
+    with pytest.raises(TypeError):
+        run_raises(
+            interp,
+            f"""
+def h():
+    pass
+
+Sig = type(h.__signature__)
+HOST = Sig.from_callable
+wrapper = __builtins__[WRAPPER_NAME](HOST)
+wrapper.__annotations__["obj"] = "H.__globals__['__builtins__']['open']({str(flag_path)!r}).read()"
+RESULT = Sig.from_callable(HOST, eval_str=True, globals={{"H": HOST}}).parameters["obj"].annotation
+""",
+            env=env,
+            filename=f"<host_function_annotations_descriptor_wrapper_{wrapper_name}_probe>",
+        )
+
+    assert "RESULT" not in env
+
+
 def test_signature_from_callable_eval_str_cannot_mutate_host_env_function_annotations():
     def helper(value):
         return value

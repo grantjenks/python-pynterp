@@ -158,6 +158,12 @@ def _metadata_owner_target(obj: Any) -> Any:
             return object.__getattribute__(obj, "__func__")
         except AttributeError:
             return obj
+    if type(obj) in (classmethod, staticmethod):
+        for attr_name in ("__func__", "__wrapped__"):
+            try:
+                return object.__getattribute__(obj, attr_name)
+            except AttributeError:
+                continue
     return obj
 
 
