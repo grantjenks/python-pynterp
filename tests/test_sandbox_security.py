@@ -14054,6 +14054,35 @@ RESULT = getattr(f, ATTR_NAME)
         )
 
 
+@pytest.mark.parametrize(
+    "attr_name",
+    (
+        "__weakref__",
+        "builtins",
+        "closure",
+        "code",
+        "globals",
+        "node",
+        "scope_info",
+    ),
+)
+def test_vars_user_function_type_internal_descriptors_are_blocked(attr_name: str):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"ATTR_NAME": attr_name})
+    with pytest.raises(KeyError):
+        run_raises(
+            interp,
+            """
+def f():
+    pass
+
+RESULT = vars(type(f))[ATTR_NAME].__get__(f)
+""",
+            env=env,
+            filename=f"<vars_user_function_type_internal_descriptor_{attr_name}_probe>",
+        )
+
+
 def test_user_function_getstate_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
@@ -14094,6 +14123,33 @@ RESULT = Sig.from_callable(host, eval_str=True, globals={{"HOST": host}}).parame
         filename="<host_function_annotate_signature_eval_str_probe>",
     )
     assert isinstance(result.exception, AttributeError)
+
+
+def test_user_function_weakref_chain_cannot_recover_interpreter(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"FLAG_PATH": str(tmp_path / "flag.txt")})
+    (tmp_path / "flag.txt").write_text("FLAG{user-function-weakref-escape}")
+    source = """
+def f():
+    pass
+
+wr = vars(type(f))["__weakref__"].__get__(f)
+wd = wr.__callback__.__defaults__[0]()
+for target in wd.data.values():
+    target.allowed_imports = None
+
+import pathlib
+RESULT = pathlib.Path(FLAG_PATH).read_text()
+"""
+    with pytest.raises(KeyError):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<user_function_weakref_interpreter_escape_probe>",
+        )
+
+    assert "RESULT" not in env
 
 
 def test_vars_function_type_annotations_descriptor_cannot_mutate_host_function_annotations(

@@ -105,6 +105,14 @@ _RUNTIME_INTERNAL_CLASS_ATTRS = {
     ),
 }
 
+_RUNTIME_INTERNAL_TYPES = frozenset(
+    set(_RUNTIME_INTERNAL_PRIVATE_ATTR_TYPES)
+    | set(_RUNTIME_INTERNAL_INSTANCE_ATTRS)
+    | set(_RUNTIME_INTERNAL_CLASS_ATTRS)
+)
+
+_RUNTIME_INTERNAL_CLASS_DESCRIPTOR_ATTRS = frozenset({"__weakref__"})
+
 _HOST_ANNOTATION_RUNTIME_ATTRS = {
     ("typing", "TypeVar"): frozenset({"__class__"}),
     ("annotationlib", "ForwardRef"): frozenset(
@@ -252,7 +260,13 @@ def _blocks_runtime_internal_attr(obj: Any, name: str) -> bool:
     else:
         is_type_object = True
     if is_type_object:
-        return name in _RUNTIME_INTERNAL_CLASS_ATTRS.get(key, ())
+        if key not in _RUNTIME_INTERNAL_TYPES:
+            return False
+        return (
+            name in _RUNTIME_INTERNAL_CLASS_ATTRS.get(key, ())
+            or name in _RUNTIME_INTERNAL_INSTANCE_ATTRS.get(key, ())
+            or name in _RUNTIME_INTERNAL_CLASS_DESCRIPTOR_ATTRS
+        )
     return name in _RUNTIME_INTERNAL_INSTANCE_ATTRS.get(key, ())
 
 
