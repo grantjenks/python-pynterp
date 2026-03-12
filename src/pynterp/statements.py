@@ -19,7 +19,7 @@ from .common import (
 )
 from .functions import UserFunction
 from .host_exec import safe_host_eval, safe_host_exec
-from .lib.guards import mark_runtime_owned
+from .lib.guards import mark_runtime_owned, safe_getattr
 from .scopes import ClassBodyScope, FunctionScope, RuntimeScope
 from .symtable_utils import _contains_yield
 
@@ -809,7 +809,7 @@ class StatementMixin:
             if match_self and attr == "__match_self__":
                 value = subject
             else:
-                value = getattr(subject, attr, _MISSING)
+                value = safe_getattr(subject, attr, _MISSING)
                 if value is _MISSING:
                     return False
             inner_bindings: Dict[str, Any] = {}
@@ -819,7 +819,7 @@ class StatementMixin:
                 return False
 
         for attr, subpattern in zip(keyword_attrs, keyword_patterns):
-            value = getattr(subject, attr, _MISSING)
+            value = safe_getattr(subject, attr, _MISSING)
             if value is _MISSING:
                 return False
             inner_bindings: Dict[str, Any] = {}

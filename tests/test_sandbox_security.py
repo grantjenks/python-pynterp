@@ -208,6 +208,35 @@ RESULT = tb.tb_frame.f_locals["__builtins__"]
         run_raises(interp, source, env=env, filename="<traceback_tb_next_frame_locals_probe>")
 
 
+def test_match_class_pattern_cannot_reach_traceback_frame_builtins(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{match-class-traceback-frame-builtins-escape}")
+    source = f"""
+try:
+    1 / 0
+except Exception as exc:
+    tb = exc.__traceback__
+TB = type(tb)
+match tb:
+    case TB(tb_frame=frame):
+        FT = type(frame)
+        match frame:
+            case FT(f_builtins=builtins):
+                RESULT = builtins["open"]({str(flag_path)!r}).read()
+"""
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<match_class_traceback_frame_builtins_probe>",
+        )
+
+    assert "RESULT" not in env
+
+
 def test_traceback_f_back_chain_globals_escape_is_blocked():
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
