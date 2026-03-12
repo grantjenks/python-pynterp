@@ -191,6 +191,15 @@ def _sanitize_host_metadata_value(obj: Any, name: str, value: Any) -> Any:
     return value
 
 
+def _exposes_host_metadata_descriptor(obj: Any, name: str, value: Any) -> bool:
+    if name not in _HOST_METADATA_MUTATION_ATTRS:
+        return False
+    owner = _metadata_owner_target(obj)
+    if not (isinstance(owner, type) and not _is_runtime_owned(owner)):
+        return False
+    return inspect.isdatadescriptor(value)
+
+
 def _metadata_owner_for_getattribute_target(target: Any) -> Any:
     if type(target) is super:
         try:
@@ -387,6 +396,11 @@ def safe_vars(*args: Any) -> Any:
             not is_blocked_attr(_normalize_attr_name(key))
             and not _blocks_host_annotation_runtime_attr(obj, _normalize_attr_name(key))
             and not _blocks_runtime_internal_attr(obj, _normalize_attr_name(key))
+            and not _exposes_host_metadata_descriptor(
+                obj,
+                _normalize_attr_name(key),
+                value,
+            )
         )
     }
 

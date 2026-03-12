@@ -14096,6 +14096,34 @@ RESULT = Sig.from_callable(host, eval_str=True, globals={{"HOST": host}}).parame
     assert isinstance(result.exception, AttributeError)
 
 
+def test_vars_function_type_annotations_descriptor_cannot_mutate_host_function_annotations(
+    tmp_path: Path,
+):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env({"FLAG_PATH": str(tmp_path / "flag.txt")})
+    (tmp_path / "flag.txt").write_text("FLAG{vars-function-type-annotations-descriptor-escape}")
+    source = """
+def h(x: int):
+    pass
+
+Sig = type(h.__signature__)
+raw = vars(Sig)["replace"]
+FunctionType = type(raw)
+ann_desc = vars(FunctionType)["__annotations__"]
+ann_desc.__set__(raw, {"return": "__builtins__['open'](FLAG_PATH).read()"})
+RESULT = Sig.from_callable(raw, eval_str=True).return_annotation
+"""
+    with pytest.raises(KeyError):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<vars_function_type_annotations_descriptor_probe>",
+        )
+
+    assert "RESULT" not in env
+
+
 def test_type_params_cannot_recover_typevar_constructor_for_forwardref_eval_escape(tmp_path: Path):
     interp = Interpreter(allowed_imports=set())
     env = interp.make_default_env()
