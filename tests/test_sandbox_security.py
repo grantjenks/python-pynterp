@@ -14067,3 +14067,39 @@ RESULT = X.__bound__.evaluate(globals={{"HOST": type(h.__signature__).from_calla
         )
 
     assert "RESULT" not in env
+
+
+def test_generic_alias_forwardref_code_object_cannot_be_executed(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{generic-alias-forwardref-code-escape}")
+    source = f"""
+def h():
+    pass
+
+class Seed[T]:
+    pass
+
+fr = Seed.__orig_bases__[0]._determine_new_args(
+    ("HOST.__func__.__globals__['__builtins__']['open']({str(flag_path)!r}).read()",)
+)[0]
+
+class EvalSeed[U: MISSING]:
+    pass
+
+FunctionType = type(EvalSeed.__type_params__[0].evaluate_bound)
+RESULT = FunctionType(
+    fr.__forward_code__,
+    {{"HOST": type(h.__signature__).from_callable}},
+)()
+"""
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<generic_alias_forwardref_code_object_escape_probe>",
+        )
+
+    assert "RESULT" not in env

@@ -107,7 +107,9 @@ _RUNTIME_INTERNAL_CLASS_ATTRS = {
 
 _HOST_ANNOTATION_RUNTIME_ATTRS = {
     ("typing", "TypeVar"): frozenset({"__class__"}),
-    ("annotationlib", "ForwardRef"): frozenset({"__class__", "_evaluate", "evaluate"}),
+    ("annotationlib", "ForwardRef"): frozenset(
+        {"__class__", "__forward_code__", "_evaluate", "evaluate"}
+    ),
 }
 
 _HOST_METADATA_MUTATION_ATTRS = frozenset(
@@ -377,6 +379,7 @@ def safe_vars(*args: Any) -> Any:
         if not isinstance(key, str)
         or (
             not is_blocked_attr(_normalize_attr_name(key))
+            and not _blocks_host_annotation_runtime_attr(obj, _normalize_attr_name(key))
             and not _blocks_runtime_internal_attr(obj, _normalize_attr_name(key))
         )
     }
