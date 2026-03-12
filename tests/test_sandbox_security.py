@@ -14037,3 +14037,33 @@ RESULT = Sig.from_callable(host, eval_str=True, globals={{"HOST": host}}).parame
         filename="<host_function_annotate_signature_eval_str_probe>",
     )
     assert isinstance(result.exception, AttributeError)
+
+
+def test_type_params_cannot_recover_typevar_constructor_for_forwardref_eval_escape(tmp_path: Path):
+    interp = Interpreter(allowed_imports=set())
+    env = interp.make_default_env()
+    flag_path = tmp_path / "flag.txt"
+    flag_path.write_text("FLAG{type-param-forwardref-eval-escape}")
+    source = f"""
+def h():
+    pass
+
+class Seed[T]:
+    pass
+
+TV = Seed.__type_params__[0].__class__
+X = TV(
+    "X",
+    bound="HOST.__func__.__globals__['__builtins__']['open']({str(flag_path)!r}).read()",
+)
+RESULT = X.__bound__.evaluate(globals={{"HOST": type(h.__signature__).from_callable}})
+"""
+    with pytest.raises(AttributeError):
+        run_raises(
+            interp,
+            source,
+            env=env,
+            filename="<type_param_forwardref_eval_escape_probe>",
+        )
+
+    assert "RESULT" not in env

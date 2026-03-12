@@ -9,7 +9,7 @@ from .functions import UserFunction
 from .helpers import InterpretedAsyncGenerator
 from .host_exec import safe_host_eval, safe_host_exec
 from .lib.builtins import SafeExposedCallableBase, is_safe_builtin_callable, wrap_safe_callable
-from .lib.guards import safe_getattr, safe_vars
+from .lib.guards import is_sensitive_host_annotation_runtime_value, safe_getattr, safe_vars
 from .scopes import ClassBodyScope, ComprehensionScope, FunctionScope, ModuleScope, RuntimeScope
 from .symtable_utils import _collect_comprehension_locals
 
@@ -194,6 +194,13 @@ class ExpressionMixin:
             if args or kwargs:
                 return builtins.dir(*args, **kwargs)
             return sorted(self._default_exec_eval_locals(scope))
+
+        if func is builtins.type and len(args) == 1 and not kwargs:
+            if is_sensitive_host_annotation_runtime_value(args[0]):
+                raise TypeError(
+                    "type() is blocked for host annotation runtime objects in this environment"
+                )
+            return builtins.type(args[0])
 
         if func is builtins.eval:
             if not args:

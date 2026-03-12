@@ -105,6 +105,11 @@ _RUNTIME_INTERNAL_CLASS_ATTRS = {
     ),
 }
 
+_HOST_ANNOTATION_RUNTIME_ATTRS = {
+    ("typing", "TypeVar"): frozenset({"__class__"}),
+    ("annotationlib", "ForwardRef"): frozenset({"__class__", "_evaluate", "evaluate"}),
+}
+
 _HOST_METADATA_MUTATION_ATTRS = frozenset(
     {
         "__annotations__",
@@ -234,10 +239,22 @@ def _blocks_runtime_internal_attr(obj: Any, name: str) -> bool:
     return name in _RUNTIME_INTERNAL_INSTANCE_ATTRS.get(key, ())
 
 
+def is_sensitive_host_annotation_runtime_value(obj: Any) -> bool:
+    return _runtime_type_key(obj) in _HOST_ANNOTATION_RUNTIME_ATTRS
+
+
+def _blocks_host_annotation_runtime_attr(obj: Any, name: str) -> bool:
+    return name in _HOST_ANNOTATION_RUNTIME_ATTRS.get(_runtime_type_key(obj), ())
+
+
 def _guard_attr_name_for_object(obj: Any, name: Any) -> str:
     normalized_name = _normalize_attr_name(name)
     if normalized_name == "__func__" and _allows_func_attr(obj):
         return normalized_name
+    if obj is not None and _blocks_host_annotation_runtime_attr(obj, normalized_name):
+        raise AttributeError(
+            f"attribute access to {normalized_name!r} is blocked in this environment"
+        )
     if obj is not None and _blocks_runtime_internal_attr(obj, normalized_name):
         raise AttributeError(
             f"attribute access to {normalized_name!r} is blocked in this environment"
